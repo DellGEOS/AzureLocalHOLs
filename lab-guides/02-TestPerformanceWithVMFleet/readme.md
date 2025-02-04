@@ -95,7 +95,7 @@ as result, VHD will be created
     $ClusterName="AzSHCI-Cluster"
     $Nodes=(Get-ClusterNode -Cluster $ClusterName).Name
     $VolumeSize=1TB
-    $StoragePool=Get-StoragePool -CimSession mcclus02 | Where-Object OtherUsageDescription -eq "Reserved for S2D"
+    $StoragePool=Get-StoragePool -CimSession $ClusterName | Where-Object OtherUsageDescription -eq "Reserved for S2D"
 
     #Create Volumes for VMs (thin provisioned)
     Foreach ($Node in $Nodes){
