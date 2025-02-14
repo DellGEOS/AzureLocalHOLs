@@ -385,16 +385,8 @@ Needed only if you installed features and all dell drivers (as firmware update r
     }
 #endregion
 
-#Check servers version again
-$RegistryPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\'
-$ComputersInfo  = Invoke-Command -ComputerName $servers -ScriptBlock {
-    Get-ItemProperty -Path $using:RegistryPath
-} -Credential $Credentials
-$ComputersInfo | Select-Object PSComputerName,ProductName,DisplayVersion,UBR
- 
 ```
 
-![](./media/powershell13.png)
 
 #### Step 5 Rename Network adapters - Optional
 
