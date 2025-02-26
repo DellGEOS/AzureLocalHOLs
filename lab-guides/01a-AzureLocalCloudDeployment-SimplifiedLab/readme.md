@@ -47,7 +47,7 @@ In this lab you will learn about the Azure Local Deployment process. This proces
 
 This lab is based on [MSLab Scripts](https://aka.ms/MSLab) that deploys Azure Local lab in virtual environment.
 
-If you want to understand full, end-to-end process, it is described in following lab: 
+If you want to understand full, end-to-end process, it is described in following lab: https://github.com/DellGEOS/AzureLocalHOLs/tree/main/lab-guides/01-AzureLocalCloudDeployment
 
 ## Prerequisites
 
