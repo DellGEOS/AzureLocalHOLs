@@ -76,7 +76,7 @@ If you open Hyper-V manager, you will notice, that there are several Virtual Mac
 ![](./media/hvmanager01.png)
 
 
-Note: the Virtual machines are located in folder MSLab on Volume E:
+Note: the Virtual machines are located in folder MSLab on Volume D:
 
 ![](./media/explorer01.png)
 
