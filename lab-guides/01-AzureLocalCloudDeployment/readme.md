@@ -25,6 +25,9 @@
         - [Task 06a - Connect nodes to Azure - WebUI](#task-06a---connect-nodes-to-azure---webui)
         - [Task 06b - Connect nodes to Azure - PowerShell](#task-06b---connect-nodes-to-azure---powershell)
         - [Task07 - Validation Prerequisites](#task07---validation-prerequisites)
+            - [Step 1 Password complexity in MSLab is password not complex enough](#step-1-password-complexity-in-mslab-is-password-not-complex-enough)
+            - [Step 2 IP Configuration](#step-2-ip-configuration)
+            - [Step 3 NTP Server if NTP protocol is blocked by firewall and servers time is not synced](#step-3-ntp-server-if-ntp-protocol-is-blocked-by-firewall-and-servers-time-is-not-synced)
         - [Task08 - Validation Prerequisites - AXNodes](#task08---validation-prerequisites---axnodes)
             - [Step 1 - Populate latest SBE package AXNodes only](#step-1---populate-latest-sbe-package-axnodes-only)
             - [Step 2 - Exclude iDRAC adapters from cluster networks](#step-2---exclude-idrac-adapters-from-cluster-networks)
@@ -396,11 +399,14 @@ Since new ISO is renaming adapters to simply Port 0, Port1, ... it might be usef
 Invoke-Command -ComputerName $Servers -ScriptBlock {
     $AdaptersHWInfo=Get-NetAdapterHardwareInfo
     foreach ($Adapter in $AdaptersHWInfo){
+        #PCIe NICs do not have PCIDeviceLabelString
         if ($adapter.Slot){
             $NewName="Slot $($Adapter.Slot) Port $($Adapter.Function +1)"
+        #then the remaining NICs should have PCIDeviceLabelString
         }elseif ($adapter.PCIDeviceLabelString){
             $NewName=$adapter.PCIDeviceLabelString
         }else{
+        #just in case there is not any nic with conditions above.
             $NewName="NIC$($Adapter.Function +1)"
         }
         $adapter | Rename-NetAdapter -NewName $NewName
@@ -659,13 +665,9 @@ Register-AzResourceProvider -ProviderNamespace "Microsoft.AzureStackHCI"
 
 ### Task07 - Validation Prerequisites
 
-There are just few settings needed before successful validation for lab running in VMs
+#### Step 1 Password complexity (in MSLab is password not complex enough)
 
-    * Making sure password is complex enough
-    * Just one IP with Gateway (might change in future)
-    * Static IP Address (might change in future)
-
-Following PowerShell will make sure all is set
+In MSLab password is not complex enough. You can change password using following script.
 
 ```PowerShell
 #region and make sure password is complex and long enough (12chars at least)
@@ -679,6 +681,13 @@ Following PowerShell will make sure all is set
     $Credentials= New-Object System.Management.Automation.PSCredential ($UserName,$SecuredPassword)
 #endregion
 
+```
+
+#### Step 2 IP Configuration
+
+In MSLab is DHCP enabled. This script will make sure there's just one GW and DHCP address is converted to Static.
+
+```PowerShell
 #region to successfully validate you need make sure there's just one GW
     #make sure there is only one management NIC with IP address (setup is complaining about multiple gateways)
     Invoke-Command -ComputerName $servers -ScriptBlock {
@@ -703,6 +712,40 @@ Following PowerShell will make sure all is set
     } -Credential $Credentials
 #endregion
  
+```
+
+#### Step 3 NTP Server (if NTP protocol is blocked by firewall and servers time is not synced)
+
+This script simply tests if offset between management machine and any of the servers is greater than 2s. If so, it will configure NTP server. Just provide your NTP server (you can use domain controller)
+
+```PowerShell
+$SyncNeeded=$false
+$NTPServer="DC.corp.contoso.com"  
+
+#test if there is an time offset on servers
+Foreach ($Server in $Servers){
+    $localtime=get-date
+    $delay=Measure-Command -Expression {
+        $remotetime=Invoke-Command -ComputerName $Server -ScriptBlock {get-date} -Credential $Credentials
+    }
+
+    $Offset=$localtime-$remotetime+$Delay
+    if ($Offset.Second -gt 2){
+        $SyncNeeded=$True
+    }
+}
+
+#if offset is greater than 2 seconds (I pulled this number out of thin air. I guess it should be less than 5 minutes or so), simply configure NTP servers
+
+If ($SyncNeeded){
+    Write-Output "Time offset found, NTP Server needs to be configured."
+    #Configure NTP
+    Invoke-Command -ComputerName $servers -ScriptBlock {
+            w32tm /config /manualpeerlist:$using:NTPServer /syncfromflags:manual /update
+            Restart-Service w32time
+    } -Credential $Credentials
+}
+
 ```
 
 ### Task08 - Validation Prerequisites - AXNodes
