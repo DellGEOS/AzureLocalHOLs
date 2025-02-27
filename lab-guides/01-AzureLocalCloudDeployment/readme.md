@@ -398,6 +398,8 @@ Invoke-Command -ComputerName $Servers -ScriptBlock {
     foreach ($Adapter in $AdaptersHWInfo){
         if ($adapter.Slot){
             $NewName="Slot $($Adapter.Slot) Port $($Adapter.Function +1)"
+        }elseif ($adapter.PCIDeviceLabelString){
+            $NewName=$adapter.PCIDeviceLabelString
         }else{
             $NewName="NIC$($Adapter.Function +1)"
         }
