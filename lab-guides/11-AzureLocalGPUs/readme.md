@@ -1,30 +1,40 @@
-
+# Azure Local and NVIDIA GPUs
 
 
 <!-- TOC -->
 
-- [About the lab](#about-the-lab)
-- [Check drivers Status](#check-drivers-status)
-- [Prepare GPU for DDA](#prepare-gpu-for-dda)
-    - [Download Driver](#download-driver)
+- [Azure Local and NVIDIA GPUs](#azure-local-and-nvidia-gpus)
+    - [About the lab](#about-the-lab)
+    - [Docs](#docs)
+    - [Check drivers Status](#check-drivers-status)
     - [Prepare GPU for DDA](#prepare-gpu-for-dda)
-    - [Check Device](#check-device)
-    - [Remove Device from DDA pool and Uninstall Driver](#remove-device-from-dda-pool-and-uninstall-driver)
-- [Prepare GPU for GPU-P](#prepare-gpu-for-gpu-p)
-    - [Install host driver](#install-host-driver)
-    - [Check Host Device](#check-host-device)
-    - [Uninstall host driver](#uninstall-host-driver)
-- [Attach GPU - DDA - PowerShell](#attach-gpu---dda---powershell)
-- [Attach GPU - GPU-P - PowerShell](#attach-gpu---gpu-p---powershell)
-- [Attach GPU - az cli](#attach-gpu---az-cli)
-- [Install Drivers in VMs](#install-drivers-in-vms)
+        - [Download Driver](#download-driver)
+        - [Prepare GPU for DDA](#prepare-gpu-for-dda)
+        - [Check Device](#check-device)
+        - [Remove Device from DDA pool and Uninstall Driver](#remove-device-from-dda-pool-and-uninstall-driver)
+    - [Prepare GPU for GPU-P](#prepare-gpu-for-gpu-p)
+        - [Install host driver](#install-host-driver)
+        - [Check Host Device](#check-host-device)
+        - [Uninstall host driver](#uninstall-host-driver)
+    - [Attach GPU - DDA - PowerShell](#attach-gpu---dda---powershell)
+    - [Attach GPU - GPU-P - PowerShell](#attach-gpu---gpu-p---powershell)
+    - [Attach GPU - az cli](#attach-gpu---az-cli)
+    - [Install Drivers in VMs - DDA](#install-drivers-in-vms---dda)
+    - [Install Drivers in VMs - GPU-P](#install-drivers-in-vms---gpu-p)
 
 <!-- /TOC -->
 
 
-# About the lab
+## About the lab
 
-Docs: 
+In this lab you will learn how to install, assign, unassign and uninstall GPU-P (GPU Partitioning) and DDA (Discrete Device Assignment) drivers into Virtual Machines.
+
+In this lab was validated on Dell MC4520 with A2 NVIDIA GPU.
+
+All commands were running from Windows Server 2025 management machine.
+
+## Docs
+
 Microsoft Docs
 * https://learn.microsoft.com/en-us/azure/azure-local/manage/gpu-preparation?view=azloc-24112
 
@@ -35,10 +45,10 @@ NVIDIA Docs - GPU-P
 NVIDIA Docs - DDA
 * https://docs.nvidia.com/datacenter/tesla/gpu-passthrough/
 
-DDA BLogpost
+DDA Blogpost
 * https://devblogs.microsoft.com/scripting/passing-through-devices-to-hyper-v-vms-by-using-discrete-device-assignment/
 
-# Check drivers Status
+## Check drivers Status
 
 ```PowerShell
 $Servers="MC4520Node1","MC4520Node2"
@@ -46,11 +56,26 @@ $Servers="MC4520Node1","MC4520Node2"
 #check for GPUs (PCI\Ven_10DE&* = NVIDIA)
 Get-PnpDevice -CimSession $Servers -InstanceId "PCI\Ven_10DE&*"
 
+#make sure Hyper-V PowerShell is installed
+Add-WindowsFeature -Name Hyper-V-PowerShell
+
+#check for DDA devices
+Get-VMHostAssignableDevice -CimSession $Servers
+
+#check for GPU-P devices
+Get-VMHostPartitionableGpu -CimSession $Servers | Select Name,PartitionCount
+
 ```
 
-# Prepare GPU for DDA
+As you can see, there's just "3D Video Controller" and VMHostAssignableDevice and VMHostPartitionableGPU is empty.
 
-## Download Driver
+![](./media/powershell01.png)
+
+## Prepare GPU for DDA
+
+### Download Driver
+
+Download mitigation driver - driver that informs Hyper-V on how to correctly reset the GPUs during VM reboots. This guarantees the GPU is in a clean state when the VM boots up, and avoids issues such as the driver not being able to initialize the GPU after VM reboot.
 
 ```PowerShell
 #Download GPU mitigation driver
@@ -89,7 +114,9 @@ $URL="https://docs.nvidia.com/datacenter/tesla/gpu-passthrough/nvidia_azure_stac
 
 ```
 
-## Prepare GPU for DDA 
+### Prepare GPU for DDA 
+
+Following script will find model and based on information in inf it will use correct driver.
 
 ```PowerShell
 #install drivers
@@ -121,7 +148,7 @@ $URL="https://docs.nvidia.com/datacenter/tesla/gpu-passthrough/nvidia_azure_stac
 
 ```
 
-## Check Device
+### Check Device
 
 ```PowerShell
 #should return unknown as device was removed
@@ -132,7 +159,9 @@ Get-VMHostAssignableDevice -CimSession $Servers
  
 ```
 
-## Remove Device from DDA pool and Uninstall Driver 
+![](./media/powershell03.png)
+
+### Remove Device from DDA pool and Uninstall Driver 
 
 First the driver is deleted, device mounted back to OS and 
 
@@ -163,16 +192,20 @@ First the driver is deleted, device mounted back to OS and
 
 ```
 
-# Prepare GPU for GPU-P
+![](./media/powershell04.png)
 
-## Install host driver
+## Prepare GPU for GPU-P
+
+### Install host driver
+
+Since this feature is licensed (NVIDIA), you will need to download host driver (and guest drivers) from your licensing site.
 
 ```PowerShell
 $Servers="MC4520Node1","MC4520Node2"
-
-#unzip and install driver
 $zipfile="$env:userprofile\Downloads\vGPU_18.0_BETA_Azure_Stack_HCI_Host_Drivers.zip"
-Expand-Archive -Path $zipfile -DestinationPath $env:userprofile\Downloads\HostDrivers\ -Force
+
+#unzip
+    Expand-Archive -Path $zipfile -DestinationPath $env:userprofile\Downloads\HostDrivers\ -Force
 
 #copy driver
     $Sessions=New-PSSession -ComputerName $Servers
@@ -191,9 +224,14 @@ Expand-Archive -Path $zipfile -DestinationPath $env:userprofile\Downloads\HostDr
     Invoke-Command -ComputerName $Servers -ScriptBlock {
         pnputil /add-driver C:\NVIDIA\GPU-P\HostDrivers\Display.Driver\nvgridswhci.inf /install /force
     }
+
 ```
 
-## Check Host Device
+![](./media/powershell05.png)
+
+### Check Host Device
+
+Following code simply queries NVIDIA devices using get-pnpdevice, runs nvidia-smi (after it's added to system variables, so you can simply run "nvidia-smi") and queries VMHostPartitionableGPU.
 
 ```PowerShell
 #check devices
@@ -214,7 +252,11 @@ Expand-Archive -Path $zipfile -DestinationPath $env:userprofile\Downloads\HostDr
 
 ```
 
-## Uninstall host driver
+![](./media/powershell06.png)
+
+### Uninstall host driver
+
+Following script will uninstall "nvgridswhci.inf" driver.
 
 ```PowerShell
 Invoke-Command -ComputerName $Servers -ScriptBlock {
@@ -227,10 +269,16 @@ Invoke-Command -ComputerName $Servers -ScriptBlock {
 
 ```
 
-# Attach GPU - DDA - PowerShell
+![](./media/powershell07.png)
+
+## Attach GPU - DDA - PowerShell
+
+In following part we'll attach GPU to "TestVMGPU" virtual machine that has been created using Azure Portal (and Resource Bridge).
+
+Note, that DDA has limitations as VM cannot be saved, therefore there's a script that will configure AutomaticStopAction to be ShutDown.
 
 ```PowerShell
-#make sure Hyper-V PowerShell is installed
+#make sure Hyper-V PowerShell is installed (so you can run AssignableDevice commands from management machine)
 Add-WindowsFeature -Name Hyper-V-PowerShell
 
 #add GPU
@@ -254,7 +302,11 @@ Add-WindowsFeature -Name Hyper-V-PowerShell
 
 ```
 
-# Attach GPU - GPU-P - PowerShell
+![](./media/powershell08.png)
+
+![](./media/hvmanager01.png)
+
+## Attach GPU - GPU-P - PowerShell
 
 ```PowerShell
 #make sure Hyper-V PowerShell is installed
@@ -279,7 +331,15 @@ Add-WindowsFeature -Name Hyper-V-PowerShell
 
 ```
 
-# Attach GPU - az cli 
+![](./media/powershell09.png)
+
+![](./media/hvmanager02.png)
+
+## Attach GPU - az cli 
+
+Notes: 
+    *   it looks like VM is always rebooted (dirty shutdown) when adding/removing device. 
+    *   DDA does not work and wont attach GPU.
 
 * DDA
     https://learn.microsoft.com/en-us/azure/azure-local/manage/gpu-manage-via-device?view=azloc-24112
@@ -325,11 +385,69 @@ az stack-hci-vm show --resource-group $ResourceGroupName --name $VMName | Conver
 
 ```
 
-# Install Drivers in VMs
+## Install Drivers in VMs - DDA
 
-<TBD>
+Note: I need to do more research as normal driver was not working.
+
+```PowerShell
+$Servers="TestVMGPU"
+Invoke-Command -ComputerName $Servers -ScriptBlock {
+    #Download drivers (this was latest driver to this date)
+    $URL="https://us.download.nvidia.com/tesla/572.61/572.61-data-center-tesla-desktop-winserver-2022-2025-dch-international.exe"
+    $fileName = [System.IO.Path]::GetFileName($url)
+    Start-BitsTransfer -Source $URL -Destination "$env:userprofile\Downloads\$FileName"
+
+    #install nanazip (7zip alternative)
+    winget install nanazip --accept-source-agreements --source winget
+    #extract
+    start-process -FilePath "NanaZipC.exe" -ArgumentList "x `"$env:userprofile\Downloads\$FileName`" -o`"c:\NVIDIA\DDA\`"" -Wait
+    #run setup.exe to install driver
+    start-process -FilePath "c:\NVIDIA\DDA\setup.exe" -ArgumentList "-s -noreboot" -Wait
+    #uninstall
+    #start-process -FilePath "c:\NVIDIA\DDA\setup.exe" -ArgumentList "-s -clean -noreboot" -Wait
+    #remove-item -path c:\NVIDIA\DDA -recurse
+}
+
+```
+
+## Install Drivers in VMs - GPU-P
+
+```PowerShell
+$Servers="TestVMGPU"
+$zipfile="$env:userprofile\Downloads\vGPU_18.0_Beta_Windows_Guest_Drivers.zip"
+
+#unzip
+    Expand-Archive -Path $zipfile -DestinationPath $env:userprofile\Downloads\WindowsGuestDrivers\ -Force
+
+#copy driver (we'll copy over zip first as it's bit too large and file by file would take forever)
+    $Sessions=New-PSSession -ComputerName $Servers
+    #copy
+    foreach ($Session in $Sessions){
+        Copy-Item -Path $zipfile -Destination $zipfile -Force -ToSession $Session
+    }
+
+    #first create a NVIDIA folders in C:\ and then expand archive
+    Invoke-Command -Session $Sessions -ScriptBlock {
+        New-Item -Path C:\ -Name "NVIDIA" -ItemType Directory -ErrorAction Ignore
+        New-Item -Path C:\NVIDIA -Name "GPU-P" -ItemType Directory -ErrorAction Ignore
+        Expand-Archive -Path $using:zipfile -DestinationPath c:\NVIDIA\GPU-P\ -Force
+    }
+    $Sessions | Remove-PSSession
 
 
+#install driver
+    Invoke-Command -ComputerName $Servers -ScriptBlock {
+        start-process -FilePath "c:\NVIDIA\GPU-P\setup.exe" -ArgumentList "-s -noreboot" -Wait
+    }
+
+#uninstall
+    #start-process -FilePath "c:\NVIDIA\setup.exe" -ArgumentList "-s -clean -noreboot" -Wait
+    #remove-item -path c:\NVIDIA\GPU-P -recurse
+
+
+```
+
+![](./media/hvmanager03.png)
 
 
 
