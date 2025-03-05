@@ -25,6 +25,7 @@ Guides focused at deploying and operation of Azure Local Clusters
 * [08 Upgrading From 22H2](lab-guides/08-Upgradingfrom22H2/)
 * [09 Network ATC Deep Dive](lab-guides/09-NetworkATCDeepDive/)
 * [10 WDAC Deep Dive](lab-guides/10-WDACDeepDive/)
+* [11 Azure Local GPUs](lab-guides/11-AzureLocalGPUs/)
 
 ## Tips & Tricks
 
