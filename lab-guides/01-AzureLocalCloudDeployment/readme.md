@@ -117,6 +117,7 @@ New-NetIPAddress -InterfaceAlias $Server.NICName -IPAddress $Server.IPAddress -P
 Set-DnsClientServerAddress -InterfaceAlias $Server.NICName  -ServerAddresses $DNSServerAddresses
 if ($Server.VLANID){
     Set-NetAdapter -VlanID $Server.VLANID -InterfaceAlias $Server.NicName
+    #note: you should also configure VLAN for second NIC in Management intent (as it's checked in prerequisites - technically not needed, but still checked as for now (02/2025))
 }
 Restart-Computer
  
