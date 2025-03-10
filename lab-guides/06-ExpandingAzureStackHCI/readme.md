@@ -20,342 +20,374 @@ You can simply follow [Cloud-based deployment HOL](https://github.com/DellGEOS/A
 
 I performed steps on AX nodes (physical servers), but code snippets are kept with virtual lab variables.
 
+Note: During one node creation you can also select separate storage intent or no intent for storage at all. I'll add example for back to back connectivity below.
+
+![](./media/edge03.png)
+
 ## Prepare server
 
-Following code is more or less same as in cloud-based deployment HOL. I kept it almost the same, I just commented out all sections that are not needed when adding node
+Following code is more or less same as in cloud-based deployment HOL. Just few sections are removed (Creating objects in AD and Azure)
 
-You can copy code into PowerShellISE or Visual Studio Code and collapse all regions (in PSISE it's ctrl+m)
+You can copy code into PowerShell ISE or Visual Studio Code and collapse all regions (in PowerShell ISE it's ctrl+m)
 
-![](./media/vscode01.png)
+![](./media/powershellise01.png)
 
-Note: as you can see, it also contains step to populate SBE package and step to update drivers. In virtual environment you should skip these steps.
+Note: as you can see, it also contains some steps for AXNodes. In virtual environment these are obviously not necessary.
 
 ```PowerShell
-#region Variables
-    #$AsHCIOUName="OU=ASClus01,DC=Corp,DC=contoso,DC=com"
-    #$LCMUserName="ASClus01-LCMUser"
-    #$LCMPassword="LS1setup!LS1setup!"
-    #$SecuredPassword = ConvertTo-SecureString $LCMPassword -AsPlainText -Force
-    #$LCMCredentials= New-Object System.Management.Automation.PSCredential ($LCMUserName,$SecuredPassword)
+#region variables & connectivity
+    $Servers="ALNODE2"
+    $NTPServer="DC.corp.contoso.com" #only set if there's time drift indicating microsoft ntp not accessible
 
-    $ResourceGroupName="ASClus01-RG"
+    $GatewayName="ALClus01-ArcGW"
+    $ResourceGroupName="ALClus01-RG"
     $Location="eastus"
 
-    $Servers="ASNode2"
-    $ResourceGroupName="ASClus01-RG"
-
-    $Cloud="AzureCloud"
-
-    #Since machines are not domain joined, let's do some preparation
+    #local admin credentials
     $UserName="Administrator"
     $Password="LS1setup!"
     $SecuredPassword = ConvertTo-SecureString $password -AsPlainText -Force
     $Credentials= New-Object System.Management.Automation.PSCredential ($UserName,$SecuredPassword)
 
-    #new local admin creds
-    $NewLocalAdminCreds="LS1setup!LS1setup!"
-
-    #NTP Server
-    $NTPServer="DC.corp.contoso.com"
+    #configure trusted hosts to be able to communicate with servers
+    $TrustedHosts=@()
+    $TrustedHosts+=$Servers
+    Set-Item WSMan:\localhost\Client\TrustedHosts -Value $($TrustedHosts -join ',') -Force
 #endregion
 
-#region Populate AD Objects
-<#
-#install posh module for prestaging Active Directory
-Install-PackageProvider -Name NuGet -Force
-Install-Module AsHciADArtifactsPreCreationTool -Repository PSGallery -Force
+#region install network driver
+    #you can lookup latest driver in https://dell.github.io/azurestack-docs/docs/hci/supportmatrix/
 
-#make sure active directory module and GPMC is installed
-Install-WindowsFeature -Name RSAT-AD-PowerShell,GPMC
+    #region check version first
+        $NICs=Invoke-Command -ComputerName $Servers -Credential $Credentials -ScriptBlock {get-NetAdapter}
+        $NICs | Where-Object {$_.InterfaceDescription -like "Intel*" -or $_.InterfaceDescription -Like "Mellanox*"} | Select-Object Driver*
+    #endregion
 
-#populate objects
-New-HciAdObjectsPreCreation -AzureStackLCMUserCredential $LCMCredentials -AsHciOUName $AsHCIOUName
-
-#install management features to explore cluster,settings...
-Install-WindowsFeature -Name "RSAT-ADDS","RSAT-Clustering"
-#>
-#endregion
-
-#region Prepare Azure
-#login to azure
-    #download Azure module
-    Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
-    if (!(Get-InstalledModule -Name az.accounts -ErrorAction Ignore)){
-        Install-Module -Name Az.Accounts -Force 
-    }
-    #login
-    Connect-AzAccount -UseDeviceAuthentication
-
-    #assuming new az.accounts module was used and it asked you what subscription to use - then correct subscription is selected for context
-    $SubscriptionID=(Get-AzContext).Subscription
-
- #install az resources module
-    if (!(Get-InstalledModule -Name "az.resources" -ErrorAction Ignore)){
-        Install-Module -Name "az.resources" -Force
-    }
-<#
-#create resource group
-    if (-not(Get-AzResourceGroup -Name $ResourceGroupName -ErrorAction Ignore)){
-        New-AzResourceGroup -Name $ResourceGroupName -Location $location
-    }
-#>
-#endregion
-
-#region configure trusted hosts to be able to communicate with servers (not secure)
-$TrustedHosts=@()
-$TrustedHosts+=$Servers
-Set-Item WSMan:\localhost\Client\TrustedHosts -Value $($TrustedHosts -join ',') -Force
-
-Invoke-Command -ComputerName $servers -ScriptBlock {
-    Enable-WindowsOptionalFeature -FeatureName Microsoft-Hyper-V -Online -NoRestart
-    Install-WindowsFeature -Name Failover-Clustering
-} -Credential $Credentials
-
-#endregion
-
-#region wipe disks
-Invoke-Command -ComputerName $Servers -ScriptBlock {
-    $disks=Get-Disk | Where-Object IsBoot -eq $false
-    $disks | Set-Disk -IsReadOnly $false
-    $disks | Set-Disk -IsOffline $false
-    $disks | Clear-Disk -RemoveData -RemoveOEM -Confirm:0
-    $disks | get-disk | Set-Disk -IsOffline $true
-} -Credential $Credentials
-
-#endregion
-
-#region update all servers (Windows Update)
-    Invoke-Command -ComputerName $servers -ScriptBlock {
-        New-PSSessionConfigurationFile -RunAsVirtualAccount -Path $env:TEMP\VirtualAccount.pssc
-        Register-PSSessionConfiguration -Name 'VirtualAccount' -Path $env:TEMP\VirtualAccount.pssc -Force
-    } -ErrorAction Ignore -Credential $Credentials
-    #sleep a bit
-    Start-Sleep 2
-    # Run Windows Update via ComObject.
-    Invoke-Command -ComputerName $servers -ConfigurationName 'VirtualAccount' -ScriptBlock {
-        $Searcher = New-Object -ComObject Microsoft.Update.Searcher
-        $SearchCriteriaAllUpdates = "IsInstalled=0 and DeploymentAction='Installation' or
-                                IsInstalled=0 and DeploymentAction='OptionalInstallation' or
-                                IsPresent=1 and DeploymentAction='Uninstallation' or
-                                IsInstalled=1 and DeploymentAction='Installation' and RebootRequired=1 or
-                                IsInstalled=0 and DeploymentAction='Uninstallation' and RebootRequired=1"
-        $SearchResult = $Searcher.Search($SearchCriteriaAllUpdates).Updates
-        if ($SearchResult.Count -gt 0){
-            $Session = New-Object -ComObject Microsoft.Update.Session
-            $Downloader = $Session.CreateUpdateDownloader()
-            $Downloader.Updates = $SearchResult
-            $Downloader.Download()
-            $Installer = New-Object -ComObject Microsoft.Update.Installer
-            $Installer.Updates = $SearchResult
-            $Result = $Installer.Install()
-            $Result
-        }
-    } -Credential $Credentials
-    #remove temporary PSsession config
-    Invoke-Command -ComputerName $servers -ScriptBlock {
-        Unregister-PSSessionConfiguration -Name 'VirtualAccount'
-        Remove-Item -Path $env:TEMP\VirtualAccount.pssc
-    }  -Credential $Credentials
-#endregion
-
-#region update all servers (Dell System Update)
-    $DSUDownloadFolder="c:\Temp\DSU"
-
-    #Set up web client to download files with autheticated web request
-    $WebClient = New-Object System.Net.WebClient
-    #$proxy = new-object System.Net.WebProxy
-    $proxy = [System.Net.WebRequest]::GetSystemWebProxy()
-    $proxy.Credentials = [System.Net.CredentialCache]::DefaultCredentials
-    #$proxy.Address = $proxyAdr
-    #$proxy.useDefaultCredentials = $true
-    $WebClient.proxy = $proxy
-
-    #Download DSU
-    #https://github.com/DellProSupportGse/Tools/blob/main/DART.ps1
-    #download latest DSU to Downloads
-        $LatestDSU="https://dl.dell.com/FOLDER10889507M/1/Systems-Management_Application_RPW7K_WN64_2.0.2.3_A00.EXE"
-        if (-not (Test-Path $DSUDownloadFolder -ErrorAction Ignore)){New-Item -Path $DSUDownloadFolder -ItemType Directory}
-        #Start-BitsTransfer -Source $LatestDSU -Destination $DSUDownloadFolder\DSU.exe
-        $WebClient.DownloadFile($LatestDSU,"$DSUDownloadFolder\DSU.exe")
-
-    #Download catalog and unpack
-        #Start-BitsTransfer -Source "https://downloads.dell.com/catalog/ASHCI-Catalog.xml.gz" -Destination "$DSUDownloadFolder\ASHCI-Catalog.xml.gz"
-        $WebClient.DownloadFile("https://downloads.dell.com/catalog/ASHCI-Catalog.xml.gz","$DSUDownloadFolder\ASHCI-Catalog.xml.gz")            
-        #unzip gzip to a folder https://scatteredcode.net/download-and-extract-gzip-tar-with-powershell/
-        Function Expand-GZipArchive{
-            Param(
-                $infile,
-                $outfile = ($infile -replace '\.gz$','')
-                )
-            $input = New-Object System.IO.FileStream $inFile, ([IO.FileMode]::Open), ([IO.FileAccess]::Read), ([IO.FileShare]::Read)
-            $output = New-Object System.IO.FileStream $outFile, ([IO.FileMode]::Create), ([IO.FileAccess]::Write), ([IO.FileShare]::None)
-            $gzipStream = New-Object System.IO.Compression.GzipStream $input, ([IO.Compression.CompressionMode]::Decompress)
-            $buffer = New-Object byte[](1024)
-            while($true){
-                $read = $gzipstream.Read($buffer, 0, 1024)
-                if ($read -le 0){break}
-                $output.Write($buffer, 0, $read)
-                }
-            $gzipStream.Close()
-            $output.Close()
-            $input.Close()
-        }
-        Expand-GZipArchive "$DSUDownloadFolder\ASHCI-Catalog.xml.gz" "$DSUDownloadFolder\ASHCI-Catalog.xml"
-
-    #upload DSU and catalog to servers
-    $Sessions=New-PSSession -ComputerName $Servers -Credential $Credentials
-    Invoke-Command -Session $Sessions -ScriptBlock {
-        if (-not (Test-Path $using:DSUDownloadFolder -ErrorAction Ignore)){New-Item -Path $using:DSUDownloadFolder -ItemType Directory}
-    }
-    foreach ($Session in $Sessions){
-        Copy-Item -Path "$DSUDownloadFolder\DSU.exe" -Destination "$DSUDownloadFolder" -ToSession $Session -Force -Recurse
-        Copy-Item -Path "$DSUDownloadFolder\ASHCI-Catalog.xml" -Destination "$DSUDownloadFolder" -ToSession $Session -Force -Recurse
-    }
-
-    #install DSU
-    Invoke-Command -Session $Sessions -ScriptBlock {
-        Start-Process -FilePath "$using:DSUDownloadFolder\DSU.exe" -ArgumentList "/silent" -Wait 
-    }
-
-    #Check compliance
-    Invoke-Command -Session $Sessions -ScriptBlock {
-        & "C:\Program Files\Dell\DELL System Update\DSU.exe" --compliance --output-format="json" --output="$using:DSUDownloadFolder\Compliance.json" --catalog-location="$using:DSUDownloadFolder\ASHCI-Catalog.xml"
-    }
-
-    #collect results
-    $Compliance=@()
-    foreach ($Session in $Sessions){
-        $json=Invoke-Command -Session $Session -ScriptBlock {Get-Content "$using:DSUDownloadFolder\Compliance.json"}
-        $object = $json | ConvertFrom-Json 
-        $components=$object.SystemUpdateCompliance.UpdateableComponent
-        $components | Add-Member -MemberType NoteProperty -Name "ClusterName" -Value $ClusterName
-        $components | Add-Member -MemberType NoteProperty -Name "ServerName" -Value $Session.ComputerName
-        $Compliance+=$Components
-    }
-
-    #display results
-    $Compliance | Out-GridView
-
-    #Or just choose what updates to install
-    #$Compliance=$Compliance | Out-GridView -OutputMode Multiple
-
-    #or Select only NIC drivers/firmware (as the rest will be processed by SBE)
-    #$Compliance=$Compliance | Where-Object categoryType -eq "NI"
-
-    #Install Dell updates https://www.dell.com/support/home/en-us/product-support/product/system-update/docs
-    Invoke-Command -Session $Sessions -ScriptBlock {
-        $Packages=(($using:Compliance | Where-Object {$_.ServerName -eq $env:computername -and $_.compliancestatus -eq $false}))
-        if ($Packages){
-            $UpdateNames=($packages.PackageFilePath | Split-Path -Leaf) -join ","
-            & "C:\Program Files\Dell\DELL System Update\DSU.exe" --catalog-location="$using:DSUDownloadFolder\ASHCI-Catalog.xml" --update-list="$UpdateNames" --apply-upgrades --apply-downgrades
-        }
-    }
-    $Sessions | Remove-PSSession
-#endregion
-
-#region restart servers to finish Installation
-    Restart-Computer -ComputerName $Servers -Credential $Credentials -WsmanAuthentication Negotiate -Wait -For PowerShell
-    Start-Sleep 20 #Failsafe as Hyper-V needs 2 reboots and sometimes it happens, that during the first reboot the restart-computer evaluates the machine is up
-    #make sure computers are restarted
-    Foreach ($Server in $Servers){
-    do{$Test= Test-NetConnection -ComputerName $Server -CommonTCPPort WINRM}while ($test.TcpTestSucceeded -eq $False)
-}
-#endregion 
-
-#region populate SBE
-    #download SBE
-    Invoke-Command -computername $Servers -scriptblock {
-        Start-BitsTransfer -Source https://dl.dell.com/FOLDER12137689M/1/Bundle_SBE_Dell_AS-HCI-AX-15G_4.1.2409.1901.zip -Destination $env:userprofile\Downloads\Bundle_SBE_Dell_AS-HCI-AX-15G_4.1.2409.1901.zip
-        #unzip to c:\SBE
-        New-Item -Path c:\ -Name SBE -ItemType Directory -ErrorAction Ignore
-        #expand archive
-        Expand-Archive -Path $env:userprofile\Downloads\Bundle_SBE_Dell_AS-HCI-AX-15G_4.1.2409.1901.zip -DestinationPath $env:userprofile\Downloads\SBE
-    } -Credential $Credentials
-#endregion
-
-#region register to Azure
-    #make sure nuget is installed on nodes
-    Invoke-Command -ComputerName $Servers -ScriptBlock {
-        Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
-    } -Credential $Credentials
-
-    #make sure azshci.arcinstaller is installed on nodes
-    Invoke-Command -ComputerName $Servers -ScriptBlock {
-        Install-Module -Name azshci.arcinstaller -Force
-    } -Credential $Credentials
-
-    #make sure Az.Resources module is installed on nodes
-    Invoke-Command -ComputerName $Servers -ScriptBlock {
-        Install-Module -Name Az.Resources -Force
-    } -Credential $Credentials
-
-    #make sure az.accounts module is installed on nodes
-    Invoke-Command -ComputerName $Servers -ScriptBlock {
-        Install-Module -Name az.accounts -Force
-    } -Credential $Credentials
-
-
-    Register-AzResourceProvider -ProviderNamespace "Microsoft.HybridCompute"
-    Register-AzResourceProvider -ProviderNamespace "Microsoft.GuestConfiguration"
-    Register-AzResourceProvider -ProviderNamespace "Microsoft.HybridConnectivity"
-    Register-AzResourceProvider -ProviderNamespace "Microsoft.AzureStackHCI"
-
-    #deploy ARC Agent
-    $TenantID=(Get-AzContext).Tenant.ID
-    $SubscriptionID=(Get-AzContext).Subscription.ID
-
-    $ARMtoken = (Get-AzAccessToken).Token
-    $id = (Get-AzContext).Account.Id
-    Invoke-Command -ComputerName $Servers -ScriptBlock {
-        Invoke-AzStackHciArcInitialization -SubscriptionID $using:SubscriptionID -ResourceGroup $using:ResourceGroupName -TenantID $using:TenantID -Cloud $using:Cloud -Region $Using:Location -ArmAccessToken $using:ARMtoken -AccountID $using:id
-    } -Credential $Credentials
-#endregion
-
-#region configure other prerequisites
-    #make sure there is only one management NIC with IP address (setup is complaining about multiple gateways)
-        Invoke-Command -ComputerName $servers -ScriptBlock {
-            Get-NetIPConfiguration | Where-Object IPV4defaultGateway | Get-NetAdapter | Sort-Object Name | Select-Object -Skip 1 | Set-NetIPInterface -Dhcp Disabled
+    #region check if NICs are Intel or Mellanox
+        $NICs=Invoke-Command -ComputerName $servers -ScriptBlock {
+            Get-NetAdapter
         } -Credential $Credentials
+        If ($NICs | Where InterfaceDescription -like "Mellanox*" ){
+            #nvidia/mellanox
+            $URL="https://dl.dell.com/FOLDER11591518M/2/Network_Driver_G6M58_WN64_24.04.03_01.EXE"
+        }else{
+            #intel
+            $URL="https://dl.dell.com/FOLDER11890492M/1/Network_Driver_6JHVK_WN64_23.0.0_A00.EXE"
+        }
+    #endregion
 
-    #add key vault admin of current user to Resource Group (It can be also done in Deploy Azure Stack HCI wizard)
-        $objectId = (Get-AzADUser -SignedIn).Id
-        New-AzRoleAssignment -ObjectId $ObjectId -ResourceGroupName $ResourceGroupName -RoleDefinitionName "Key Vault Administrator"
+    #region download
+        #Set up web client to download files with authenticated web request in case there's a proxy
+        $WebClient = New-Object System.Net.WebClient
+        #$proxy = new-object System.Net.WebProxy
+        $proxy = [System.Net.WebRequest]::GetSystemWebProxy()
+        $proxy.Credentials = [System.Net.CredentialCache]::DefaultCredentials
+        #$proxy.Address = $proxyAdr
+        #$proxy.useDefaultCredentials = $true
+        $WebClient.proxy = $proxy
+        #add headers wihth user-agent as some versions of SBE requires it for download
+        $webclient.Headers.Add("User-Agent", "WhateverUser-AgentString/1.0")
+        $FileName=$($URL.Split("/")| Select-Object -Last 1)
+        $WebClient.DownloadFile($URL,"$env:userprofile\Downloads\$FileName")
+    #endregion
 
+    #region copy driver to nodes and install
+        $sessions = New-PSSession -ComputerName $Servers -Credential $Credentials
+        foreach ($Session in $Sessions){
+            Copy-Item -Path $env:userprofile\Downloads\$FileName -Destination c:\users\$UserName\Downloads\$FileName -ToSession $session
+        }
+        
+        #install
+        Invoke-Command -ComputerName $Servers -ScriptBlock {
+            Start-Process -FilePath c:\users\$Using:UserName\Downloads\$using:FileName -ArgumentList "/i /s" -Wait
+        } -Credential $Credentials
+    #endregion
 
-    #Configure NTP Server
-    Invoke-Command -ComputerName $servers -ScriptBlock {
-        w32tm /config /manualpeerlist:$using:NTPServer /syncfromflags:manual /update
-        Restart-Service w32time
-    } -Credential $Credentials
+    #region check version again
+        $NICs=Invoke-Command -ComputerName $Servers -Credential $Credentials -ScriptBlock {get-NetAdapter}
+        $NICs | Where-Object {$_.InterfaceDescription -like "Intel*" -or $_.InterfaceDescription -Like "Mellanox*"} | Select-Object Driver*
+    #endregion
+#endregion
 
-    Start-Sleep 20
-
-    #check if source is NTP Server
-    Invoke-Command -ComputerName $servers -ScriptBlock {
-        w32tm /query /source
-    } -Credential $Credentials
-
-    #in case NIC naming is wrong, you can fix it with following code
-    #In latest build all adapter sare renamed to "PortX". If you want original naming scheme, you can use code below.
-    <#
+#region rename network adapters
     Invoke-Command -ComputerName $Servers -ScriptBlock {
         $AdaptersHWInfo=Get-NetAdapterHardwareInfo
         foreach ($Adapter in $AdaptersHWInfo){
+            #PCIe NICs do not have PCIDeviceLabelString
             if ($adapter.Slot){
                 $NewName="Slot $($Adapter.Slot) Port $($Adapter.Function +1)"
+            #then the remaining NICs should have PCIDeviceLabelString
+            }elseif ($adapter.PCIDeviceLabelString){
+                $NewName=$adapter.PCIDeviceLabelString
             }else{
+            #just in case there is not any nic with conditions above.
                 $NewName="NIC$($Adapter.Function +1)"
             }
             $adapter | Rename-NetAdapter -NewName $NewName
         }
     } -Credential $Credentials
-    #>
+#endregion
 
-    #change password of local admin to be at least 12 chars
-        Invoke-Command -ComputerName $servers -ScriptBlock {
-            Set-LocalUser -Name Administrator -AccountNeverExpires -Password (ConvertTo-SecureString $using:NewLocalAdminCreds -AsPlainText -Force)
+#region validate environment
+    #install modules
+    Invoke-Command -ComputerName $Servers -Scriptblock {
+        Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
+        Install-Module PowerShellGet -AllowClobber -Force
+        Install-Module -Name AzStackHci.EnvironmentChecker -Force
+    } -Credential $Credentials
+    #validate environment
+    $result=Invoke-Command -ComputerName $Servers -Scriptblock {
+        Invoke-AzStackHciConnectivityValidation -PassThru
+    } -Credential $Credentials
+    $result | Out-GridView
+#endregion
+
+#region connect server to azure
+    #login to azure
+        #download Azure module
+        Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
+        if (!(Get-InstalledModule -Name az.accounts -ErrorAction Ignore)){
+            Install-Module -Name Az.Accounts -Force 
+        }
+        #login using device authentication
+        Connect-AzAccount -UseDeviceAuthentication
+
+        #assuming new az.accounts module was used and it asked you what subscription to use - then correct subscription is selected for context
+        $Subscription=(Get-AzContext).Subscription
+
+        #install az resources module
+            if (!(Get-InstalledModule -Name az.resources -ErrorAction Ignore)){
+                Install-Module -Name az.resources -Force
+            }
+
+        #create resource group
+            if (-not(Get-AzResourceGroup -Name $ResourceGroupName -ErrorAction Ignore)){
+                New-AzResourceGroup -Name $ResourceGroupName -Location $location
+            }
+    #region (Optional) configure ARC Gateway
+        if ($GatewayName){
+            #install az.arcgateway module
+                if (!(Get-InstalledModule -Name az.arcgateway -ErrorAction Ignore)){
+                    Install-Module -Name az.arcgateway -Force
+                }
+            #make sure "Microsoft.HybridCompute" is registered (and possibly other RPs)
+                Register-AzResourceProvider -ProviderNamespace "Microsoft.HybridCompute"
+                Register-AzResourceProvider -ProviderNamespace "Microsoft.GuestConfiguration"
+                Register-AzResourceProvider -ProviderNamespace "Microsoft.HybridConnectivity"
+                Register-AzResourceProvider -ProviderNamespace "Microsoft.AzureStackHCI"
+
+            #create GW
+            if (Get-AzArcGateway -Name $gatewayname -ResourceGroupName $ResourceGroupName -ErrorAction Ignore){
+                $ArcGWInfo=Get-AzArcGateway -Name $gatewayname -ResourceGroupName $ResourceGroupName
+            }else{
+                $ArcGWInfo=New-AzArcGateway -Name $GatewayName -ResourceGroupName $ResourceGroupName -Location $Location -SubscriptionID $Subscription.ID
+            }
+        }
+    #endregion
+
+    #generate variables for use in this window
+    $SubscriptionID=$Subscription.ID
+    $Region=$Location
+    $TenantID=$Subscription.TenantID
+    $ArcGatewayID=$ArcGWInfo.ID
+
+
+    #region install modules (latest ISO already contains modules, but does not hurt installing it)
+        #make sure nuget is installed on nodes
+        Invoke-Command -ComputerName $Servers -ScriptBlock {
+            Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
+        } -Credential $Credentials
+
+        #make sure azshci.arcinstaller is installed on nodes
+        Invoke-Command -ComputerName $Servers -ScriptBlock {
+            Install-Module -Name azshci.arcinstaller -Force
+        } -Credential $Credentials
+
+        #make sure Az.Resources module is installed on nodes
+        Invoke-Command -ComputerName $Servers -ScriptBlock {
+            Install-Module -Name Az.Resources -Force
+        } -Credential $Credentials
+
+        #make sure az.accounts module is installed on nodes
+        Invoke-Command -ComputerName $Servers -ScriptBlock {
+            Install-Module -Name az.accounts -Force
+        } -Credential $Credentials
+
+        #make sure az.accounts module is installed on nodes
+        Invoke-Command -ComputerName $Servers -ScriptBlock {
+            Install-Module -Name Az.ConnectedMachine -Force
+        } -Credential $Credentials
+    #endregion
+
+    #Make sure resource providers are registered
+    Register-AzResourceProvider -ProviderNamespace "Microsoft.HybridCompute"
+    Register-AzResourceProvider -ProviderNamespace "Microsoft.GuestConfiguration"
+    Register-AzResourceProvider -ProviderNamespace "Microsoft.HybridConnectivity"
+    Register-AzResourceProvider -ProviderNamespace "Microsoft.AzureStackHCI"
+
+    #deploy ARC Agent (with Arc Gateway, without proxy. For more examples visit https://learn.microsoft.com/en-us/azure/azure-local/deploy/deployment-arc-register-server-permissions?tabs=powershell)
+        $ARMtoken = (Get-AzAccessToken).Token
+        $id = (Get-AzContext).Account.Id
+        $Cloud="AzureCloud"
+
+        Invoke-Command -ComputerName $Servers -ScriptBlock {
+            if ($using:ArcGatewayID){
+                Invoke-AzStackHciArcInitialization -SubscriptionID $using:SubscriptionID -ResourceGroup $using:ResourceGroupName -TenantID $using:TenantID -Cloud $using:Cloud -Region $Using:Location -ArmAccessToken $using:ARMtoken -AccountID $using:id -ArcGatewayID $using:ArcGatewayID
+            }else{
+                Invoke-AzStackHciArcInitialization -SubscriptionID $using:SubscriptionID -ResourceGroup $using:ResourceGroupName -TenantID $using:TenantID -Cloud $using:Cloud -Region $Using:Location -ArmAccessToken $using:ARMtoken -AccountID $using:id
+            }
         } -Credential $Credentials
 #endregion
+
+#region validation prerequisites
+    #region and make sure password is complex and long enough (12chars at least)
+        $NewPassword="LS1setup!LS1setup!"
+        Invoke-Command -ComputerName $servers -ScriptBlock {
+            Set-LocalUser -Name Administrator -AccountNeverExpires -Password (ConvertTo-SecureString $Using:NewPassword -AsPlainText -Force)
+        } -Credential $Credentials
+        #create new credentials
+        $UserName="Administrator"
+        $SecuredPassword = ConvertTo-SecureString $NewPassword -AsPlainText -Force
+        $Credentials= New-Object System.Management.Automation.PSCredential ($UserName,$SecuredPassword)
+    #endregion
+
+    #region to successfully validate you need make sure there's just one GW
+        #make sure there is only one management NIC with IP address (setup is complaining about multiple gateways)
+        Invoke-Command -ComputerName $servers -ScriptBlock {
+            Get-NetIPConfiguration | Where-Object IPV4defaultGateway | Get-NetAdapter | Sort-Object Name | Select-Object -Skip 1 | Set-NetIPInterface -Dhcp Disabled
+        } -Credential $Credentials
+    #endregion
+
+    #region Convert DHCP address to Static (since 2411 there's a check for static IP)
+        Invoke-Command -ComputerName $Servers -ScriptBlock {
+            $InterfaceAlias=(Get-NetIPAddress -AddressFamily IPv4 | Where-Object {$_.IPAddress -NotLike "169*" -and $_.PrefixOrigin -eq "DHCP"}).InterfaceAlias
+            $IPConf=Get-NetIPConfiguration -InterfaceAlias $InterfaceAlias
+            $IPAddress=Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias $InterfaceAlias
+            $IP=$IPAddress.IPAddress
+            $Index=$IPAddress.InterfaceIndex
+            $GW=$IPConf.IPv4DefaultGateway.NextHop
+            $Prefix=$IPAddress.PrefixLength
+            $DNSServers=@()
+            $ipconf.dnsserver | ForEach-Object {if ($_.addressfamily -eq 2){$DNSServers+=$_.ServerAddresses}}
+            Set-NetIPInterface -InterfaceIndex $Index -Dhcp Disabled
+            New-NetIPAddress -InterfaceIndex $Index -AddressFamily IPv4 -IPAddress $IP -PrefixLength $Prefix -DefaultGateway $GW -ErrorAction SilentlyContinue
+            Set-DnsClientServerAddress -InterfaceIndex $index -ServerAddresses $DNSServers
+        } -Credential $Credentials
+    #endregion
+ 
+    #test if there is an time offset on servers
+    Foreach ($Server in $Servers){
+        $localtime=get-date
+        $delay=Measure-Command -Expression {
+            $remotetime=Invoke-Command -ComputerName $Server -ScriptBlock {get-date} -Credential $Credentials
+        }
+
+        $Offset=$localtime-$remotetime+$Delay
+        if ([math]::Abs($Offset.Seconds) -gt 10){
+            $SyncNeeded=$True
+        }else{
+            $SyncNeeded=$false
+        }
+    }
+
+    #if offset is greater than 10 seconds (I pulled this number out of thin air. I guess it should be less than 5 minutes or so), simply configure NTP servers
+
+    If ($SyncNeeded){
+        Write-Output "Time offset found, NTP Server needs to be configured."
+        #Configure NTP
+        Invoke-Command -ComputerName $servers -ScriptBlock {
+                w32tm /config /manualpeerlist:$using:NTPServer /syncfromflags:manual /update
+                Restart-Service w32time
+        } -Credential $Credentials
+    }
+
+#endregion
+
+#region ax nodes prerequisites
+    #region populate SBE package
+        #15G 
+        $LatestSBE="https://dl.dell.com/FOLDER12528657M/1/Bundle_SBE_Dell_AX-15G_4.1.2412.1201.zip"
+        #or 16G
+        #$LatestSBE="https://dl.dell.com/FOLDER12528644M/1/Bundle_SBE_Dell_AX-16G_4.1.2412.1202.zip"
+
+        #Set up web client to download files with authenticated web request in case there's a proxy
+        $WebClient = New-Object System.Net.WebClient
+        #$proxy = new-object System.Net.WebProxy
+        $proxy = [System.Net.WebRequest]::GetSystemWebProxy()
+        $proxy.Credentials = [System.Net.CredentialCache]::DefaultCredentials
+        #$proxy.Address = $proxyAdr
+        #$proxy.useDefaultCredentials = $true
+        $WebClient.proxy = $proxy
+        #add headers wihth user-agent as some versions of SBE requires it for download
+        $webclient.Headers.Add("User-Agent", "WhateverUser-AgentString/1.0")
+
+        #Download SBE
+            $FileName=$($LatestSBE.Split("/")| Select-Object -Last 1)
+            $WebClient.DownloadFile($LatestSBE,"$env:userprofile\Downloads\$FileName")
+
+            #Transfer to servers
+            $Sessions=New-PSSession -ComputerName $Servers -Credential $Credentials
+            foreach ($Session in $Sessions){
+                Copy-Item -Path $env:userprofile\Downloads\$FileName -Destination c:\users\$UserName\Downloads\ -ToSession $Session
+            }
+
+        Invoke-Command -ComputerName $Servers -scriptblock {
+            #unzip to c:\SBE
+            New-Item -Path c:\ -Name SBE -ItemType Directory -ErrorAction Ignore
+            Expand-Archive -LiteralPath $env:userprofile\Downloads\$using:FileName -DestinationPath C:\SBE -Force
+        } -Credential $Credentials
+
+        #populate latest metadata file
+            #download
+            Invoke-WebRequest -Uri https://aka.ms/AzureStackSBEUpdate/DellEMC -OutFile $env:userprofile\Downloads\SBE_Discovery_Dell.xml
+            #copy to servers
+            foreach ($Session in $Session){
+                Copy-Item -Path $env:userprofile\Downloads\SBE_Discovery_Dell.xml -Destination C:\SBE -ToSession $Session
+            }
+
+        $Sessions | Remove-PSSession
+    #endregion
+
+    #region exclude iDRAC adapters from cluster networks (as validation was failing in latest versions)
+    Invoke-Command -computername $Servers -scriptblock {
+        New-Item -Path HKLM:\system\currentcontrolset\services\clussvc\parameters -ErrorAction Ignore
+        New-ItemProperty -Path HKLM:\system\currentcontrolset\services\clussvc\parameters -Name ExcludeAdaptersByDescription -Value "Remote NDIS Compatible Device" -ErrorAction Ignore
+        #Get-ItemProperty -Path HKLM:\system\currentcontrolset\services\clussvc\parameters -Name ExcludeAdaptersByDescription | Format-List ExcludeAdaptersByDescription
+    } -Credential $Credentials
+    #endregion
+
+    #region clean disks (if the servers are repurposed)
+        Invoke-Command -ComputerName $Servers -ScriptBlock {
+            $disks=Get-Disk | Where-Object IsBoot -eq $false
+            $disks | Set-Disk -IsReadOnly $false
+            $disks | Set-Disk -IsOffline $false
+            $disks | Clear-Disk -RemoveData -RemoveOEM -Confirm:0
+            $disks | get-disk | Set-Disk -IsOffline $true
+        } -Credential $Credentials
+    #endregion
+#endregion
+
+```
+
+## Add Network intent example - if there's no storage intent
+
+Following is example for default network with just one NIC. You can modify it your way. This code assumes you use Windows Server 2025 as a management machine.
+
+```PowerShell
+$ClusterName="AXClus02"
+$AdapterNames="Slot 3 Port 2"
+
+#make sure netATC is installed
+Add-WindowsFeature -Name NetworkATC
+#add storage Intent with default VLAN
+Add-NetIntent -ClusterName $ClusterName -AdapterName $AdapterNames -Storage
+
+#just another example
+<#
+$AdapterNames="Slot 3 Port 1","Slot 3 Port 2"
+$StorageVLANs="123","124"
+Add-NetIntent -ClusterName $ClusterName -AdapterName $AdapterNames -Storage -StorageVlans $StorageVLANS 
+#>
 ```
 
 ## Add server

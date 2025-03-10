@@ -720,7 +720,6 @@ In MSLab is DHCP enabled. This script will make sure there's just one GW and DHC
 This script simply tests if offset between management machine and any of the servers is greater than 2s. If so, it will configure NTP server. Just provide your NTP server (you can use domain controller)
 
 ```PowerShell
-$SyncNeeded=$false
 $NTPServer="DC.corp.contoso.com"  
 
 #test if there is an time offset on servers
@@ -731,12 +730,14 @@ Foreach ($Server in $Servers){
     }
 
     $Offset=$localtime-$remotetime+$Delay
-    if ($Offset.Second -gt 2){
+    if ([math]::Abs($Offset.Seconds) -gt 10){
         $SyncNeeded=$True
+    }else{
+        $SyncNeeded=$false
     }
 }
 
-#if offset is greater than 2 seconds (I pulled this number out of thin air. I guess it should be less than 5 minutes or so), simply configure NTP servers
+#if offset is greater than 10 seconds (I pulled this number out of thin air. I guess it should be less than 5 minutes or so), simply configure NTP servers
 
 If ($SyncNeeded){
     Write-Output "Time offset found, NTP Server needs to be configured."

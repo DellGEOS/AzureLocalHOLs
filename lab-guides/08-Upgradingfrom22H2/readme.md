@@ -47,11 +47,9 @@ Always make sure you have backup of your VMS!
 
 * Azure Local (Azure Stack HCI) 22H2 parent disk (see code below to be able to download ISO) and guide on how to [create parent disk](../../admin-guides/01-HydrateMSLab#task-4---create-azure-stack-hci-parent-disk)
 
-## ReFS considerations
+## ReFS issue (as of March 2025)
 
-There were limited customers with corruption issue with ReFS caused with ReFS upgrade issue, so it is recommended to block ReFS update until cluster is fully upgraded to 23h2 (+ few days)
-
-To block updating, simply create a registry entry
+There is already identified bug that causes ReFS volume to unmount. No data are lost, just enhanced metadata check has an issue that will dismount filesystem.
 
 ```PowerShell
 #make sure failover clustering management tools are installed on management machine to be able to grab cluster nodes
@@ -60,9 +58,9 @@ Install-WindowsFeature -Name RSAT-Clustering,RSAT-Clustering-Mgmt,RSAT-Clusterin
 $ClusterName="ASClus01"
 $Servers=(Get-ClusterNode -Cluster $ClusterName).Name
 
-#disable ReFS volume upgrade
+#disable ReFS metadata validation (temporary workaround until fix is shipped - most likely next Quality Release)
 Invoke-Command -ComputerName $Servers -ScriptBlock {
-    REG ADD "HKLM\SYSTEM\CurrentControlSet\Control\FileSystem" /v "RefsDisableVolumeUpgrade" /t REG_DWORD /d 1 /f
+    Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name "RefsEnableMetadataValidation" -Value 0 -Type DWord -ErrorAction Ignore
 }
  
 ```
