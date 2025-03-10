@@ -123,6 +123,8 @@ foreach ($Network in $Networks){
 Invoke-Command -ComputerName $Server -ScriptBlock {
     #installRRAS
     Install-WindowsFeature -Name Routing,RSAT-RemoteAccess -IncludeAllSubFeature
+    #Install Hyper-v Tools
+    Install-WindowsFeature -Name RSAT-Hyper-V-Tools
     #enable routing
     Write-Output "`t`t  Making sure routing is enabled"
     $routingEnabled = (Get-ItemProperty HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters -Name IPEnableRouter).IPEnableRouter
