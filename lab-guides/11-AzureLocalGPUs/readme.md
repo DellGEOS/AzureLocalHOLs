@@ -322,7 +322,7 @@ Add-WindowsFeature -Name Hyper-V-PowerShell
     #check
     $VM | Get-VMGpuPartitionAdapter
 
-#remove GPU
+#remove GPU (remove GPU is fine unless GPU is initiated in VM. If so, VM will reboot)
     <#
     $VMName="TestVMGPU"
     $VM=Get-VM -CimSession $Servers -Name $VMName
