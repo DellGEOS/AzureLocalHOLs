@@ -60,7 +60,6 @@ Following script assumes you want to modify LiteTouchPE_x64.iso located on MDT s
 Note: following command will immediately reboot the server into the ISO image.
 
 ```PowerShell
-
 #region boot from ISO (service partition)
     $iDracUsername="LabAdmin"
     $iDracPassword="LS1setup!"
@@ -76,6 +75,11 @@ Note: following command will immediately reboot the server into the ISO image.
     $ShareName="DeploymentShare$/Boot"
     $Sharetype="CIFS"
     $ExposeDuration = "0000-00-00T01:30:00+00:00" #1.5hours
+
+    #hyper-v hosts
+    $HVHosts = @()
+    $HVHosts+=@{ComputerName="AXNode3" ; idracIP="192.168.x.y"}
+    $HVHosts+=@{ComputerName="AXNode4" ; idracIP="192.168.x.z"}
 
    #ignoring cert is needed for posh5. In 6 and newer you can just add -SkipCertificateCheck to Invoke-WebRequest
     function Ignore-SSLCertificates {
