@@ -1,3 +1,107 @@
+# Check Live Migration networks
+
+Note: to be able to Live migrate, you need to add Management network to Live Migration networks
+
+```PowerShell
+$ClusterNames="AXClus02","MCClus02"
+
+#first make sure NetATC and Failover Cluster PowerShell is installed on management machine(WS2025)
+Add-WindowsFeature -Name NetworkATC,RSAT-Clustering-PowerShell
+
+#create and configure override to rewrite Live Migration network settings
+$override=New-NetIntentGlobalClusterOverrides
+$override.EnableLiveMigrationNetworkSelection=$false
+foreach ($ClusterName in $ClusterNames){
+    Set-NetIntent -GlobalClusterOverrides $override -ClusterName $ClusterName
+    #check
+    (Get-NetIntent -GlobalOverrides -ClusterName $ClusterName).ClusterOverride
+}
+
+
+#list live migration networks
+    $Networks=@()
+    foreach ($ClusterName in $ClusterNames){
+        #check MigrationExcludeNetworks first
+            $ExcludedNetworksIDs=(Get-ClusterResourceType -Cluster $ClusterName -Name "Virtual Machine" | Get-ClusterParameter -Name MigrationExcludeNetworks).Value -split ";"
+            $ClusterNetworks=Get-ClusterNetwork -Cluster $ClusterName
+            # Create a list of network names
+            $Networks+=foreach ($ClusterNetwork in $ClusterNetworks){
+                #check if ClusterNetworkID is in list
+                $LiveMigrationEnabled= -not ($ExcludedNetworksIDs -contains $CLusterNetwork.ID)
+                [PSCustomObject]@{
+                    Name                = $ClusterNetwork.Name
+                    ID                  = $ClusterNetwork.ID
+                    Role                = $ClusterNetwork.Role
+                    State               = $ClusterNetwork.State
+                    Metric              = $ClusterNetwork.Metric
+                    LiveMigrationEnabled= $LiveMigrationEnabled
+                    ClusterName         = $ClusterName
+                }
+            }
+    }
+
+$Networks | Format-Table -AutoSize
+
+```
+
+![](./media/powershell01.png)
+
+# Configure Live Migration networks  
+
+Configure both Management and Storage networks for Live Migration
+
+```PowerShell
+$ClusterNames="AXClus02","MCClus02"
+
+#first find all networks that are not management and not storage (with NetworkATC, Management network and Storage Networks are renamed)
+foreach ($ClusterName in $ClusterNames){
+    $ClusterNetworks=(Get-ClusterNetwork -Cluster $ClusterName | Where-Object {$_.Name -notlike "*Management*" -and $_.Name -notlike "*Storage*"} )
+    if ($ClusterNetworks){
+        $ClusterNetworkIDs=([String]::Join(";",$ClusterNetworks.ID))
+        Get-ClusterResourceType -Cluster $ClusterName -Name "Virtual Machine" | Set-ClusterParameter -Name MigrationExcludeNetworks -Value $ClusterNetworkIDs
+    }else{
+        Get-ClusterResourceType -Cluster $ClusterName -Name "Virtual Machine" | Set-ClusterParameter -Name MigrationExcludeNetworks -Value ""
+    }
+}
+
+```
+
+Check again
+
+```PowerShell
+$ClusterNames="AXClus02","MCClus02"
+
+#list live migration networks
+    $Networks=@()
+    foreach ($ClusterName in $ClusterNames){
+        #check MigrationExcludeNetworks first
+            $ExcludedNetworksIDs=(Get-ClusterResourceType -Cluster $ClusterName -Name "Virtual Machine" | Get-ClusterParameter -Name MigrationExcludeNetworks).Value -split ";"
+            $ClusterNetworks=Get-ClusterNetwork -Cluster $ClusterName
+            # Create a list of network names
+            $Networks+=foreach ($ClusterNetwork in $ClusterNetworks){
+                #check if ClusterNetworkID is in list
+                $LiveMigrationEnabled= -not ($ExcludedNetworksIDs -contains $CLusterNetwork.ID)
+                [PSCustomObject]@{
+                    Name                = $ClusterNetwork.Name
+                    ID                  = $ClusterNetwork.ID
+                    Role                = $ClusterNetwork.Role
+                    State               = $ClusterNetwork.State
+                    Metric              = $ClusterNetwork.Metric
+                    LiveMigrationEnabled= $LiveMigrationEnabled
+                    ClusterName         = $ClusterName
+                }
+            }
+    }
+
+$Networks | Format-Table -AutoSize
+
+```
+
+![](./media/powershell02.png)
+
+
+# Live Migration script
+
 ```PowerShell
 #Live Migration cluster to cluster
     #Configure kerberos constrained delegation to move from Firstcluster to SecondCluster and back
