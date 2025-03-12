@@ -10,7 +10,7 @@ Add-WindowsFeature -Name NetworkATC,RSAT-Clustering-PowerShell
 
 #create and configure override to rewrite Live Migration network settings
 $override=New-NetIntentGlobalClusterOverrides
-$override.EnableLiveMigrationNetworkSelection=$True
+$override.EnableLiveMigrationNetworkSelection=$false
 foreach ($ClusterName in $ClusterNames){
     Set-NetIntent -GlobalClusterOverrides $override -ClusterName $ClusterName
     #check
