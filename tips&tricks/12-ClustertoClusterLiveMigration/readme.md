@@ -1,22 +1,16 @@
 # Check Live Migration networks
 
-Note: to be able to Live migrate, you need to add Management network to Live Migration networks
-
 ```PowerShell
 $ClusterNames="AXClus02","MCClus02"
 
 #first make sure NetATC and Failover Cluster PowerShell is installed on management machine(WS2025)
 Add-WindowsFeature -Name NetworkATC,RSAT-Clustering-PowerShell
 
-#create and configure override to rewrite Live Migration network settings
-$override=New-NetIntentGlobalClusterOverrides
-$override.EnableLiveMigrationNetworkSelection=$false
+#check if EnableLiveMigrationNetworkSelection override exist
 foreach ($ClusterName in $ClusterNames){
-    Set-NetIntent -GlobalClusterOverrides $override -ClusterName $ClusterName
     #check
     (Get-NetIntent -GlobalOverrides -ClusterName $ClusterName).ClusterOverride
 }
-
 
 #list live migration networks
     $Networks=@()
@@ -46,18 +40,29 @@ $Networks | Format-Table -AutoSize
 
 ![](./media/powershell01.png)
 
-# Configure Live Migration networks  
+# Configure Live Migration networks
 
 Configure both Management and Storage networks for Live Migration
 
 ```PowerShell
 $ClusterNames="AXClus02","MCClus02"
 
-#first find all networks that are not management and not storage (with NetworkATC, Management network and Storage Networks are renamed)
+#create and configure override, otherwise NetATC will rewrite Live Migration network settings backc
+$override=New-NetIntentGlobalClusterOverrides
+$override.EnableLiveMigrationNetworkSelection=$false
 foreach ($ClusterName in $ClusterNames){
-    $ClusterNetworks=(Get-ClusterNetwork -Cluster $ClusterName | Where-Object {$_.Name -notlike "*Management*" -and $_.Name -notlike "*Storage*"} )
-    if ($ClusterNetworks){
-        $ClusterNetworkIDs=([String]::Join(";",$ClusterNetworks.ID))
+    Set-NetIntent -GlobalClusterOverrides $override -ClusterName $ClusterName
+    #check
+    (Get-NetIntent -GlobalOverrides -ClusterName $ClusterName).ClusterOverride
+}
+
+#configure networks
+foreach ($ClusterName in $ClusterNames){
+    #find all networks that are not management and or not storage (with NetworkATC, Management network and Storage Networks are renamed) so it will be excluded
+    $ExcludedClusterNetworks=(Get-ClusterNetwork -Cluster $ClusterName | Where-Object {$_.Name -notlike "*Management*" -and $_.Name -notlike "*Storage*"} )
+    #and then configure exclusions
+    if ($ExcludedClusterNetworks){
+        $ClusterNetworkIDs=([String]::Join(";",$ExcludedClusterNetworks.ID))
         Get-ClusterResourceType -Cluster $ClusterName -Name "Virtual Machine" | Set-ClusterParameter -Name MigrationExcludeNetworks -Value $ClusterNetworkIDs
     }else{
         Get-ClusterResourceType -Cluster $ClusterName -Name "Virtual Machine" | Set-ClusterParameter -Name MigrationExcludeNetworks -Value ""
