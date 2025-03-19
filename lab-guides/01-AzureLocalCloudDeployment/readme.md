@@ -831,7 +831,16 @@ In case disks were used before, it might be useful to wipe it.
 
 ```
 
-#### Step 4 - Reboot iDRAC if needed
+#### Step 4 - Add OEM info
+
+Just add support 
+```PowerShell
+    Invoke-Command -ComputerName $Servers -ScriptBlock {
+        New-itemproperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\OEMInformation" -name SupportProvider -value Dell
+    } -Credential $Credentials
+```
+
+#### Step 5 - Reboot iDRAC if needed
 
 Check if there is leftover in USB. This is be caused by DSU updating iDRAC, and might leave "leftover" attached to virtual USB.
 
