@@ -332,15 +332,27 @@ Invoke-command -ComputerName $ClusterNodes -ScriptBlock {Get-WinEvent -FilterHas
 
 ```PowerShell
 $ClusterName="AXClus02"
-#make sure failover clustering powershell and NetworkATC is installed and grab nodes
-Install-WindowsFeature -Name RSAT-Clustering-PowerShell,NetworkATC
-$ClusterNodes=(Get-ClusterNode -Cluster $ClusterName).Name
+
+#following cluster is universal also for Windows Server 2022 (as I needed it multiple times
 
 #grab Intent
-$IntentName=(Get-NetIntent -ClusterName $ClusterName | Where-Object IsStorageIntentSet).IntentName
+$FailedIntents=Invoke-Command -ComputerName $ClusterName -ScriptBlock {
+   Get-NetIntentStatus | Where-Object ConfigurationStatus -eq Failed
+}
 
-#set RetryState for first node
-Set-NetIntentRetryState -ClusterName $ClusterName -NodeName $ClusterNodes[0] -Name $intentname
+#retry failed intents
+Foreach ($FailedIntent in $FailedIntents){
+    Invoke-Command -ComputerName $FailedIntent.Host -ScriptBlock {
+        Set-NetIntentRetryState -NodeName  $using:FailedIntent.Host -Name $using:FailedIntent.IntentName
+    }
+}
+
+Start-Sleep 10
+
+#check intents again
+Invoke-Command -ComputerName $ClusterName -ScriptBlock {
+   Get-NetIntentStatus
+}
 
 ```
 
