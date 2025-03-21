@@ -1,30 +1,34 @@
 # Upgrading from Azure Local 22H2
 
+
 <!-- TOC -->
 
 - [Upgrading from Azure Local 22H2](#upgrading-from-azure-local-22h2)
     - [About the lab](#about-the-lab)
     - [Prerequisites](#prerequisites)
-    - [ReFS considerations](#refs-considerations)
+    - [ReFS issue as of March 2025](#refs-issue-as-of-march-2025)
     - [Download ISO for parent disk](#download-iso-for-parent-disk)
     - [Labconfig](#labconfig)
-    - [Install 22H2 cluster without NetATC](#install-22h2-cluster-without-netatc)
-    - [Upgrade OS using CAU might not work](#upgrade-os-using-cau-might-not-work)
-    - [Upgrade OS using media](#upgrade-os-using-media)
-        - [Download 23H2 media first](#download-23h2-media-first)
-        - [Mount image and copy to nodes](#mount-image-and-copy-to-nodes)
-        - [Update nodes using media](#update-nodes-using-media)
-        - [Update Cluster and Storage Pool versions](#update-cluster-and-storage-pool-versions)
-    - [Migrate networking to NetworkATC](#migrate-networking-to-networkatc)
-    - [Remove NetATC IP Addresses](#remove-netatc-ip-addresses)
-    - [Validate Solution upgrade readiness](#validate-solution-upgrade-readiness)
-    - [Apply solution upgrade](#apply-solution-upgrade)
-        - [First some prerequisites - Prepare Active Directory](#first-some-prerequisites---prepare-active-directory)
-        - [Enforce sync so Azure will see 23H2](#enforce-sync-so-azure-will-see-23h2)
+    - [Task 01: Install 22H2 cluster without NetATC](#task-01-install-22h2-cluster-without-netatc)
+    - [Task 02a : Upgrade OS using CAU might not work](#task-02a--upgrade-os-using-cau-might-not-work)
+    - [Task 02b: Upgrade OS using media](#task-02b-upgrade-os-using-media)
+        - [Step 01: Download 23H2 media first](#step-01-download-23h2-media-first)
+        - [Step 02: Mount image and copy to nodes](#step-02-mount-image-and-copy-to-nodes)
+        - [Step 03: Update nodes using media](#step-03-update-nodes-using-media)
+        - [Step 04: Update Cluster and Storage Pool versions](#step-04-update-cluster-and-storage-pool-versions)
+    - [Task 02c: Upgrade OS using SConfig or Windows Update semi-manual](#task-02c-upgrade-os-using-sconfig-or-windows-update-semi-manual)
+        - [Step 01: install feature update](#step-01-install-feature-update)
+        - [Step 02: Post-Upgrade actions](#step-02-post-upgrade-actions)
+    - [Task 03: Migrate networking to NetworkATC - only if NetATC is not already configured](#task-03-migrate-networking-to-networkatc---only-if-netatc-is-not-already-configured)
+        - [Step 01 - Convert networking to NetATC](#step-01---convert-networking-to-netatc)
+        - [Step 02: Remove NetATC IP Addresses](#step-02-remove-netatc-ip-addresses)
+    - [Task 04: Validate Solution upgrade readiness](#task-04-validate-solution-upgrade-readiness)
+    - [Task 05: Apply solution upgrade](#task-05-apply-solution-upgrade)
+        - [Step 01: First some prerequisites - Prepare Active Directory](#step-01-first-some-prerequisites---prepare-active-directory)
+        - [Step 02: Enforce sync - so Azure will see 23H2](#step-02-enforce-sync---so-azure-will-see-23h2)
         - [Perform Azure Onboard TBD: Option is not available in portal](#perform-azure-onboard-tbd-option-is-not-available-in-portal)
 
 <!-- /TOC -->
-
 
 ## About the lab
 In this lab you will learn how to upgrade Azure Local from versinon 22H2 to 23H2.
@@ -50,6 +54,8 @@ Always make sure you have backup of your VMS!
 ## ReFS issue (as of March 2025)
 
 There is already identified bug that causes ReFS volume to unmount. No data are lost, just enhanced metadata check has an issue that will dismount filesystem.
+
+This registry will disappear after 22h2->23h2 OS upgrade. This renders CAU method unusable as you need to populate registry right after OS upgrade is done and before adding node back to cluster.
 
 ```PowerShell
 #make sure failover clustering management tools are installed on management machine to be able to grab cluster nodes
@@ -107,7 +113,7 @@ $LabConfig.VMs += @{ VMName = 'Management' ; ParentVHD = 'Win2025_G2.vhdx' ; MGM
 ![](./media/hvmanager01.png)
 
 
-## Install 22H2 cluster without NetATC
+## Task 01: Install 22H2 cluster without NetATC
 
 Simply follow [this script](./media/22H2_WithoutNetATC.ps1) to install cluster. Run the script from the Management machine. The best way is to run it region by region by pasting it from PowerShell ISE to PowerShell window
 
@@ -119,7 +125,7 @@ This script will setup 2 node Azure Local (Azure Stack HCI) 22H2 with traditiona
 
 ![](./media/edge01.png)
 
-## Upgrade OS using CAU (might not work)
+## Task 02a : Upgrade OS using CAU (might not work)
 
 Documentation: https://learn.microsoft.com/en-us/azure/azure-local/upgrade/upgrade-22h2-to-23h2-powershell
 
@@ -171,9 +177,9 @@ Invoke-CauRun -ClusterName $ClusterName -CauPluginName "Microsoft.RollingUpgrade
     $ComputersInfo | Select-Object PSComputerName,CurrentBuildNumber,DisplayVersion,UBR
 ```
 
-## Upgrade OS using media
+## Task 02b: Upgrade OS using media
 
-### Download 23H2 media first
+### Step 01: Download 23H2 media first
 
 ```PowerShell
 
@@ -191,7 +197,7 @@ Invoke-CauRun -ClusterName $ClusterName -CauPluginName "Microsoft.RollingUpgrade
 
 ```
 
-### Mount image and copy to nodes
+### Step 02: Mount image and copy to nodes
 
 ```PowerShell
 $Servers="ASNode1","ASNode2"
@@ -219,7 +225,7 @@ $DriveLetter = (Get-Volume -DiskImage $Mount).DriveLetter
 
 ```
 
-### Update nodes using media
+### Step 03: Update nodes using media
 
 Since CAU run was not working, let's update using media.
 
@@ -298,6 +304,18 @@ Note: drain will fail in Virtual environment as VMs for some reason recognize di
                 $Windeploy=Invoke-Command -ComputerName $Server -ScriptBlock {get-process windeploy -ErrorAction Ignore}
             }while ($Windeploy -ne $Null)
 
+            #add REFS registry
+            Invoke-Command -ComputerName $Server -ScriptBlock {
+                Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name "RefsEnableMetadataValidation" -Value 0 -Type DWord -ErrorAction Ignore
+            }
+
+            #add idrac registry (AX Nodes)
+            Invoke-Command -computername $Server -scriptblock {
+                New-Item -Path HKLM:\system\currentcontrolset\services\clussvc\parameters -ErrorAction Ignore
+                New-ItemProperty -Path HKLM:\system\currentcontrolset\services\clussvc\parameters -Name ExcludeAdaptersByDescription -Value "Remote NDIS Compatible Device" -ErrorAction Ignore
+                #Get-ItemProperty -Path HKLM:\system\currentcontrolset\services\clussvc\parameters -Name ExcludeAdaptersByDescription | Format-List ExcludeAdaptersByDescription
+            }
+
             #now you can resume node
             Resume-ClusterNode -Name $Server -Cluster $ClusterName
         }
@@ -320,7 +338,7 @@ You can now check versions
 
 ![](./media/powershell03.png)
 
-### Update Cluster and Storage Pool versions
+### Step 04: Update Cluster and Storage Pool versions
 
 ```PowerShell
     $ClusterName="ASClus01"
@@ -329,9 +347,154 @@ You can now check versions
 
 ```
 
-## Migrate networking to NetworkATC
+## Task 02c: Upgrade OS using SConfig or Windows Update (semi-manual)
+
+
+### Step 01: install feature update
+
+Following example is demonstrating conservative approach, where you can run script step-by-step, node-by-node 
+
+```PowerShell
+$ClusterName="ASClus01"
+#server we want to work with
+$Server="ALNode1"
+
+#apply the REFS registry (this will disappear anyway after 23h2 is applied, but ms docs recommends it :)
+    #disable ReFS metadata validation (temporary workaround until fix is shipped - most likely next Quality Release)
+    Invoke-Command -ComputerName $Server -ScriptBlock {
+        Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name "RefsEnableMetadataValidation" -Value 0 -Type DWord -ErrorAction Ignore
+        #reg add "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\FileSystem" /v "RefsEnableMetadataValidation" /t REG_DWORD /d 0 /f
+    }
+
+    #check
+    Invoke-Command -ComputerName $Server -ScriptBlock {
+        Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name "RefsEnableMetadataValidation" -ErrorAction Ignore
+    }
+
+#is everything healthy?
+    #no jobs running
+    Get-StorageSubSystem -CimSession $ClusterName -FriendlyName Clus* | Get-StorageJob -CimSession $ClusterName
+
+    #all virtual disks healthy
+    Get-VirtualDisk -CimSession $ClusterName 
+
+    #all fault domains healhy
+    Get-StorageFaultDomain -CimSession $ClusterName
+
+    #make sure all nodes are healthy
+    Get-ClusterNode -Cluster $ClusterName
+
+#if all is good, suspend node
+Suspend-ClusterNode -Name $Server -Drain -Cluster "ClusterName" -Wait
+
+#apply update and wait for reboot
+
+#apply feature update (or manual from sconfig)
+
+    Invoke-Command -ComputerName $Server -ScriptBlock {
+        New-PSSessionConfigurationFile -RunAsVirtualAccount -Path $env:TEMP\VirtualAccount.pssc
+        Register-PSSessionConfiguration -Name 'VirtualAccount' -Path $env:TEMP\VirtualAccount.pssc -Force
+    } -ErrorAction Ignore
+    #sleep a bit
+    Start-Sleep 2
+    # Run Windows Update via ComObject (following script is simplified version of Microsoft.ServerCore.SConfig module located at c:\Windows\System32\WindowsPowerShell\v1.0\Modules\Microsoft.ServerCore.SConfig\2.0.0.0\ )
+    Invoke-Command -ComputerName $Server -ConfigurationName 'VirtualAccount' -ScriptBlock {
+        $UpdateSession = New-Object -Com Microsoft.Update.Session
+        $Searcher = New-Object -ComObject Microsoft.Update.Searcher
+        $UpdatesCollection = New-Object -Com Microsoft.Update.UpdateColl
+        $SearchCriteriaAllUpdates =  "IsInstalled=0 and DeploymentAction='Installation' or
+                                     IsInstalled=0 and DeploymentAction='OptionalInstallation' or
+                                     IsPresent=1 and DeploymentAction='Uninstallation' or
+                                     IsInstalled=1 and DeploymentAction='Installation' and RebootRequired=1 or
+                                     IsInstalled=0 and DeploymentAction='Uninstallation' and RebootRequired=1"
+        #select just feature update, download and install
+        $FeatureUpdate = $Searcher.Search($SearchCriteriaAllUpdates).Updates | Where-Object Title -like "Feature*"
+        #add to collection
+        $UpdatesCollection.Add($FeatureUpdate)
+        #download
+        $Downloader = $UpdateSession.CreateUpdateDownloader()
+        $Downloader.Updates = $UpdatesCollection
+        $Downloader.Download()
+        #install
+        $Installer = $UpdateSession.CreateUpdateInstaller()
+        $Installer.Updates = $UpdatesCollection
+        $Installer.Install()
+        #Commit
+        $Committer = $UpdateSession.CreateUpdateInstaller()
+        $Committer.Updates = $UpdatesCollection
+        $Committer.Commit(0)
+    }
+    #remove temporary PSsession config
+    Invoke-Command -ComputerName $Server -ScriptBlock {
+        Unregister-PSSessionConfiguration -Name 'VirtualAccount'
+        Remove-Item -Path $env:TEMP\VirtualAccount.pssc
+    }
+
+#reboot machine to finish
+Restart-Computer -ComputerName $Server -Protocol WSMan -Wait -For PowerShell -Force
+
+
+#wait for machine to apply 23H2
+    $RegistryPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\'
+    do{
+        Start-Sleep 5
+        $ComputerInfo  = Invoke-Command -ComputerName $server -ScriptBlock {
+            Get-ItemProperty -Path $using:RegistryPath
+            $ComputerInfo | Select-Object PSComputerName,CurrentBuildNumber,DisplayVersion,UBR
+        }
+    }while ($ComputerInfo.DisplayVersion -ne "23H2")
+
+
+#check registry
+    #check
+    Invoke-Command -ComputerName $Server -ScriptBlock {
+        Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name "RefsEnableMetadataValidation" -ErrorAction Ignore
+    }
+
+    #add registry back as it dissapeared
+    Invoke-Command -ComputerName $Server -ScriptBlock {
+        Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name "RefsEnableMetadataValidation" -Value 0 -Type DWord -ErrorAction Ignore
+        #reg add "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\FileSystem" /v "RefsEnableMetadataValidation" /t REG_DWORD /d 0 /f
+    }
+
+    #add idrac registry (AX Nodes)
+    Invoke-Command -computername $Server -scriptblock {
+        New-Item -Path HKLM:\system\currentcontrolset\services\clussvc\parameters -ErrorAction Ignore
+        New-ItemProperty -Path HKLM:\system\currentcontrolset\services\clussvc\parameters -Name ExcludeAdaptersByDescription -Value "Remote NDIS Compatible Device" -ErrorAction Ignore
+        #Get-ItemProperty -Path HKLM:\system\currentcontrolset\services\clussvc\parameters -Name ExcludeAdaptersByDescription | Format-List ExcludeAdaptersByDescription
+    }
+
+#resume node
+    Resume-ClusterNode -Name $Server -Cluster $ClusterName
+
+```
+
+### Step 02: Post-Upgrade actions
+
+
+```PowerShell
+#Check OS version
+    #check OS Build Number
+    $RegistryPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\'
+    $ComputersInfo  = Invoke-Command -ComputerName $servers -ScriptBlock {
+        Get-ItemProperty -Path $using:RegistryPath
+    }
+    $ComputersInfo | Select-Object PSComputerName,CurrentBuildNumber,DisplayVersion,UBR
+
+#update functional levels
+    Update-ClusterFunctionalLevel -Cluster $ClusterName -Force
+    Get-StoragePool -CimSession $ClusterName -IsPrimordial $False | Update-StoragePool -Confirm:0
+```
+
+## Task 03: Migrate networking to NetworkATC - only if NetATC is not already configured
+
+### Step 01 - Convert networking to NetATC
 
 Since renaming vSwitch when VMs are connected to that vSwitch is breaking operation, it would be easiest to have old and new vSwitch in one moment, so you can switch all VMs in the same moment. For this transition, we would use one NIC in each node for "old" vswitch and one for "new" vswitch for transition phase.
+
+This is just an example. There are multiple ways to achieve the same. The main breaking part is that if you rename virtual switch, you need to disconnect/connect all VMs NetAdapters attached to that vSwitch. Otherwise the Live Migration wont work.
+
+You could also simply apply intent and rename virtual switches. This would need to disconnect/connect all network adapters to make sure Live Migration will work.
 
 ```PowerShell
     $ClusterName="ASClus01"
@@ -467,7 +630,7 @@ foreach ($Server in $Servers){
 
 ```
 
-## Remove NetATC IP Addresses
+### Step 02: Remove NetATC IP Addresses
 
 For some reason 10.71.1.x and 10.71.2.x IP addresses were configured even we configured EnableAutomaticIPGeneration to be false. Let's remove it
 
@@ -480,7 +643,7 @@ As result, you will have your cluster with all networks managed with NetATC
 
 ![](./media/cluadmin02.png)
 
-## Validate Solution upgrade readiness
+## Task 04: Validate Solution upgrade readiness
 
 https://learn.microsoft.com/en-us/azure/azure-local/upgrade/validate-solution-upgrade-readiness
 
@@ -582,11 +745,11 @@ Successful test - features installed
 
 ![](./media/powershell05.png)
 
-## Apply solution upgrade
+## Task 05: Apply solution upgrade
 
 https://learn.microsoft.com/en-us/azure/azure-local/upgrade/install-solution-upgrade
 
-### First some prerequisites - Prepare Active Directory
+### Step 01: First some prerequisites - Prepare Active Directory
 
 ```PowerShell
 $AsHCIOUName="OU=ASClus01,DC=Corp,DC=contoso,DC=com"
@@ -616,7 +779,7 @@ Foreach ($Server in $Servers){
 
 ```
 
-### Enforce sync (so Azure will see 23H2)
+### Step 02: Enforce sync - so Azure will see 23H2
 
 ```PowerShell
 Invoke-Command -ComputerName $ClusterName -ScriptBlock {
