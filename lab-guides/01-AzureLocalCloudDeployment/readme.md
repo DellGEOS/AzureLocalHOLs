@@ -590,7 +590,7 @@ Assuming you have still variables from Task03, you can continue with following P
 More info: https://learn.microsoft.com/en-us/azure/azure-local/deploy/deployment-arc-register-server-permissions?tabs=powershell
 
 ```PowerShell
-#region install modules (latest ISO already contains modules, but does not hurt installing it)
+#region install modules (2503 ISO already contains modules, newer 2504 and 2505 does not)
     #make sure nuget is installed on nodes
     Invoke-Command -ComputerName $Servers -ScriptBlock {
         Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
@@ -643,15 +643,31 @@ More info: https://learn.microsoft.com/en-us/azure/azure-local/deploy/deployment
 #endregion
 
 #Make sure resource providers are registered
-Register-AzResourceProvider -ProviderNamespace "Microsoft.HybridCompute"
-Register-AzResourceProvider -ProviderNamespace "Microsoft.GuestConfiguration"
-Register-AzResourceProvider -ProviderNamespace "Microsoft.HybridConnectivity"
-Register-AzResourceProvider -ProviderNamespace "Microsoft.AzureStackHCI"
+Register-AzResourceProvider -ProviderNamespace "Microsoft.HybridCompute" 
+Register-AzResourceProvider -ProviderNamespace "Microsoft.GuestConfiguration" 
+Register-AzResourceProvider -ProviderNamespace "Microsoft.HybridConnectivity" 
+Register-AzResourceProvider -ProviderNamespace "Microsoft.AzureStackHCI" 
+Register-AzResourceProvider -ProviderNamespace "Microsoft.Kubernetes" 
+Register-AzResourceProvider -ProviderNamespace "Microsoft.KubernetesConfiguration" 
+Register-AzResourceProvider -ProviderNamespace "Microsoft.ExtendedLocation" 
+Register-AzResourceProvider -ProviderNamespace "Microsoft.ResourceConnector" 
+Register-AzResourceProvider -ProviderNamespace "Microsoft.HybridContainerService"
+Register-AzResourceProvider -ProviderNamespace "Microsoft.Attestation"
+Register-AzResourceProvider -ProviderNamespace "Microsoft.Storage"
 
 #deploy ARC Agent (with Arc Gateway, without proxy. For more examples visit https://learn.microsoft.com/en-us/azure/azure-local/deploy/deployment-arc-register-server-permissions?tabs=powershell)
-    $ARMtoken = (Get-AzAccessToken).Token
+    $armtoken = (Get-AzAccessToken).Token
     $id = (Get-AzContext).Account.Id
     $Cloud="AzureCloud"
+
+    #check if token is plaintext (older module version outputs plaintext, version 5 outputs secure string)
+    # Check if the token is a SecureString
+    if ($armtoken -is [System.Security.SecureString]) {
+        # Convert SecureString to plaintext
+        $armtoken = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto([System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($armtoken))
+    }else {
+        Write-Output "Token is already plaintext."
+    }
 
     Invoke-Command -ComputerName $Servers -ScriptBlock {
         Invoke-AzStackHciArcInitialization -SubscriptionID $using:SubscriptionID -ResourceGroup $using:ResourceGroupName -TenantID $using:TenantID -Cloud $using:Cloud -Region $Using:Location -ArmAccessToken $using:ARMtoken -AccountID $using:id #-ArcGatewayID $using:ArcGatewayID
