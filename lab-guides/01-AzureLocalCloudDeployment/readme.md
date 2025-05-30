@@ -15,8 +15,8 @@
             - [Step 3 Connect to servers using WinRM](#step-3-connect-to-servers-using-winrm)
         - [Task02 - Install features & drivers](#task02---install-features--drivers)
             - [Step 1 Install server features - skip if you use latest media](#step-1-install-server-features---skip-if-you-use-latest-media)
-            - [Step 2 Install Network Drivers - AXnodes - fresh install only](#step-2-install-network-drivers---axnodes---fresh-install-only)
-            - [Step 3 Install Dell Drivers - Optional - AX Nodes](#step-3-install-dell-drivers---optional---ax-nodes)
+            - [Step 2 Install Network Drivers - AXnodes - only if you are not using Dell media](#step-2-install-network-drivers---axnodes---only-if-you-are-not-using-dell-media)
+            - [Step 3 Install Dell Drivers - only if you are not using Dell media, or if you need to downgrade firmware](#step-3-install-dell-drivers---only-if-you-are-not-using-dell-media-or-if-you-need-to-downgrade-firmware)
             - [Step 4 Restart servers to apply changes](#step-4-restart-servers-to-apply-changes)
             - [Step 5 Rename Network adapters - Optional](#step-5-rename-network-adapters---optional)
         - [Task03 - Validate environment using Environment Checker tool](#task03---validate-environment-using-environment-checker-tool)
@@ -28,13 +28,7 @@
             - [Step 1 Password complexity in MSLab is password not complex enough](#step-1-password-complexity-in-mslab-is-password-not-complex-enough)
             - [Step 2 IP Configuration](#step-2-ip-configuration)
             - [Step 3 NTP Server if NTP protocol is blocked by firewall and servers time is not synced](#step-3-ntp-server-if-ntp-protocol-is-blocked-by-firewall-and-servers-time-is-not-synced)
-        - [Task08 - Validation Prerequisites - AXNodes](#task08---validation-prerequisites---axnodes)
-            - [Step 1 - Populate latest SBE package AXNodes only](#step-1---populate-latest-sbe-package-axnodes-only)
-            - [Step 2 - Exclude iDRAC adapters from cluster networks](#step-2---exclude-idrac-adapters-from-cluster-networks)
-            - [Step 3 - Clear data disks](#step-3---clear-data-disks)
-            - [Step 4 - Add OEM info](#step-4---add-oem-info)
-            - [Step 5 - Reboot iDRAC if needed](#step-5---reboot-idrac-if-needed)
-        - [Task 09 - Deploy Azure Local from Azure Portal](#task-09---deploy-azure-local-from-azure-portal)
+        - [Task 08 - Deploy Azure Local from Azure Portal](#task-08---deploy-azure-local-from-azure-portal)
 
 <!-- /TOC -->
 
@@ -46,10 +40,13 @@ You can also deploy physical machines with [MDT](../../admin-guides/03-DeployPhy
 
 You can deploy physical machines with simple click-next-next from ISO. Make sure correct OS disk is selected and if DHCP is not available, configure an IP address and rename computers.
 
-[Latest ISO](https://aka.ms/HCIReleaseImage) contains web interface to register servers to Azure. It also contains all Az PowerShell modules, so it's not necessary to upload it into nodes.
-[Older ISO](https://software-static.download.prss.microsoft.com/dbazure/888969d5-f34g-4e03-ac9d-1f9786c66749/25398.469.231004-1141.zn_release_svc_refresh_SERVERAZURESTACKHCICOR_OEMRET_x64FRE_en-us.iso) does not contain webUI and PowerShell modules.
+Dell only supports Dell ISO that includes Dell drivers.
 
-You can register servers using PowerShell or using WebUI. WebUI process simplifies the deployment a bit, but several steps are still needed. The OS will automatically use SN of the server and will use it as a hostname. If you are on the same network, you can simply navigate to https://`<device-serial-number>`.local (it uses local discovery).
+[Latest ISO](https://aka.ms/HCIReleaseImage/2505)
+
+[Dell ISO](https://dell.github.io/azurestack-docs/docs/hci/supportmatrix/2503/goldenimages/)
+
+**Note: Currently (30.5.2025) deployment inside VMs does not work as registration complains about "ImageRecipeValidation Failed"**
 
 ### Prerequisites
 
@@ -57,7 +54,7 @@ You can register servers using PowerShell or using WebUI. WebUI process simplifi
 
 * Understand [how MSLab works](../../admin-guides/02-WorkingWithMSLab/readme.md)
 
-* Make sure you hydrate latest [Azure Local 23H2 Image](https://aka.ms/HCIReleaseImage) using CreateParentDisk.ps1 located in ParentDisks folder as it contains [WebUI onboarding](https://learn.microsoft.com/en-us/azure-stack/hci/deploy/deployment-arc-register-local-ui)
+* Make sure you hydrate latest Azure Local Image using CreateParentDisk.ps1 located in ParentDisks folder
 
 * Note: this lab uses ~60GB RAM. To reduce amount of RAM, you would need to reduce number of nodes.
 
@@ -68,7 +65,7 @@ $LabConfig=@{AllowedVLANs="1-10,711-719" ; DomainAdminName='LabAdmin'; AdminPass
 
 #Azure Local 23H2
 #labconfig will not domain join VMs
-1..2 | ForEach-Object {$LABConfig.VMs += @{ VMName = "ALNode$_" ; Configuration = 'S2D' ; ParentVHD = 'AzSHCI23H2_G2.vhdx' ; HDDNumber = 4 ; HDDSize= 1TB ; MemoryStartupBytes= 24GB; VMProcessorCount="MAX" ; vTPM=$true ; Unattend="NoDjoin" ; NestedVirt=$true }}
+1..2 | ForEach-Object {$LABConfig.VMs += @{ VMName = "ALNode$_" ; Configuration = 'S2D' ; ParentVHD = 'AzSHCI24H2_G2.vhdx' ; HDDNumber = 4 ; HDDSize= 1TB ; MemoryStartupBytes= 24GB; VMProcessorCount="MAX" ; vTPM=$true ; Unattend="NoDjoin" ; NestedVirt=$true }}
 
 #Windows Admin Center in GW mode
 $LabConfig.VMs += @{ VMName = 'WACGW' ; ParentVHD = 'Win2025Core_G2.vhdx'; MGMTNICs=1}
@@ -202,7 +199,7 @@ Invoke-Command -ComputerName $servers -ScriptBlock {
 
 ```
 
-#### Step 2 Install Network Drivers - AXnodes - fresh install only
+#### Step 2 Install Network Drivers - AXnodes - only if you are not using Dell media
 
 ```PowerShell
 #you can lookup latest driver in https://dell.github.io/azurestack-docs/docs/hci/supportmatrix/
@@ -268,7 +265,7 @@ After
 ![](./media/powershell17.png)
 
 
-#### Step 3 Install Dell Drivers - Optional - AX Nodes
+#### Step 3 Install Dell Drivers - only if you are not using Dell media, or if you need to downgrade firmware
 
 Following example installs all drivers and in case you have newer drivers, it will downgrade. You can simply modify the code to just scan for compliance and display status. This will also make your life easier if for some reason you updated to newer drivers than SBE. SBE would fail as firmware extension can't downgrade.
 
@@ -569,7 +566,6 @@ https://learn.microsoft.com/en-us/azure/azure-local/deploy/deployment-arc-regist
 
 As you now have all variables needed from Task03, you can proceed with installing and running [Configurator App](https://aka.ms/ConfiguratorAppForHCI) on management machine.
 
-
 Log in with **Administrator/LS1setup!** and proceed with all steps to register nodes to Azure.
 
 ### Task 06b - Connect nodes to Azure - PowerShell
@@ -703,113 +699,7 @@ If ($SyncNeeded){
 
 ```
 
-### Task08 - Validation Prerequisites - AXNodes
-
-One prerequisite is to install NIC Drivers, but we already covered this in Task02 where servers were updated
-
-#### Step 1 - Populate latest SBE package (AXNodes only)
-
-```PowerShell
-    #15G 
-    $LatestSBE="https://dl.dell.com/FOLDER12528657M/1/Bundle_SBE_Dell_AX-15G_4.1.2412.1201.zip"
-    #or 16G
-    #$LatestSBE="https://dl.dell.com/FOLDER12528644M/1/Bundle_SBE_Dell_AX-16G_4.1.2412.1202.zip"
-
-    #region populate SBE package
-        #Set up web client to download files with authenticated web request in case there's a proxy
-        $WebClient = New-Object System.Net.WebClient
-        #$proxy = new-object System.Net.WebProxy
-        $proxy = [System.Net.WebRequest]::GetSystemWebProxy()
-        $proxy.Credentials = [System.Net.CredentialCache]::DefaultCredentials
-        #$proxy.Address = $proxyAdr
-        #$proxy.useDefaultCredentials = $true
-        $WebClient.proxy = $proxy
-        #add headers wihth user-agent as some versions of SBE requires it for download
-        $webclient.Headers.Add("User-Agent", "WhateverUser-AgentString/1.0")
-
-        #Download SBE
-            $FileName=$($LatestSBE.Split("/")| Select-Object -Last 1)
-            $WebClient.DownloadFile($LatestSBE,"$env:userprofile\Downloads\$FileName")
-
-            #Transfer to servers
-            $Sessions=New-PSSession -ComputerName $Servers -Credential $Credentials
-            foreach ($Session in $Sessions){
-                Copy-Item -Path $env:userprofile\Downloads\$FileName -Destination c:\users\$UserName\Downloads\ -ToSession $Session
-            }
-
-        Invoke-Command -ComputerName $Servers -scriptblock {
-            #unzip to c:\SBE
-            New-Item -Path c:\ -Name SBE -ItemType Directory -ErrorAction Ignore
-            Expand-Archive -LiteralPath $env:userprofile\Downloads\$using:FileName -DestinationPath C:\SBE -Force
-        } -Credential $Credentials
-
-        #populate latest metadata file
-            #download
-            Invoke-WebRequest -Uri https://aka.ms/AzureStackSBEUpdate/DellEMC -OutFile $env:userprofile\Downloads\SBE_Discovery_Dell.xml
-            #copy to servers
-            foreach ($Session in $Session){
-                Copy-Item -Path $env:userprofile\Downloads\SBE_Discovery_Dell.xml -Destination C:\SBE -ToSession $Session
-            }
-
-        $Sessions | Remove-PSSession
-    #endregion
-```
-
-#### Step 2 - Exclude iDRAC adapters from cluster networks
-
-```PowerShell
-#region exclude iDRAC adapters from cluster networks (as validation was failing in latest versions)
-    Invoke-Command -computername $Servers -scriptblock {
-        New-Item -Path HKLM:\system\currentcontrolset\services\clussvc\parameters -ErrorAction Ignore
-        New-ItemProperty -Path HKLM:\system\currentcontrolset\services\clussvc\parameters -Name ExcludeAdaptersByDescription -Value "Remote NDIS Compatible Device" -ErrorAction Ignore
-        #Get-ItemProperty -Path HKLM:\system\currentcontrolset\services\clussvc\parameters -Name ExcludeAdaptersByDescription | Format-List ExcludeAdaptersByDescription
-    } -Credential $Credentials
-#endregion
-```
-
-#### Step 3 - Clear data disks
-
-In case disks were used before, it might be useful to wipe it.
-
-```PowerShell
-#region clean disks (if the servers are repurposed)
-    Invoke-Command -ComputerName $Servers -ScriptBlock {
-        $disks=Get-Disk | Where-Object IsBoot -eq $false
-        $disks | Set-Disk -IsReadOnly $false
-        $disks | Set-Disk -IsOffline $false
-        $disks | Clear-Disk -RemoveData -RemoveOEM -Confirm:0
-        $disks | get-disk | Set-Disk -IsOffline $true
-    } -Credential $Credentials
-#endregion
-
-```
-
-#### Step 4 - Add OEM info
-
-Just add support 
-```PowerShell
-    Invoke-Command -ComputerName $Servers -ScriptBlock {
-        New-itemproperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\OEMInformation" -name SupportProvider -value Dell
-    } -Credential $Credentials
-```
-
-#### Step 5 - Reboot iDRAC if needed
-
-Check if there is leftover in USB. This is be caused by DSU updating iDRAC, and might leave "leftover" attached to virtual USB.
-
-```PowerShell
-#check if there are any SECUPD devices attached
-Invoke-Command -ComputerName $Servers -ScriptBlock {get-disk | Where-Object FriendlyName -eq "Linux SECUPD"} -Credential $Credentials | Select-Object FriendlyName,Path,PSComputerName
-
-```
-
-![](./media/powershell14.png)
-
-if so, reboot iDRAC from webUI as it would interrupt deployment process as it would find attached USB media.
-
-![](./media/edge10.png)
-
-### Task 09 - Deploy Azure Local from Azure Portal
+### Task 08 - Deploy Azure Local from Azure Portal
 
 Use values below for virtual cluster
 
