@@ -1,8 +1,8 @@
-# Azure Local 23H2 Deployment
+# Azure Local Deployment
 
 <!-- TOC -->
 
-- [Azure Local 23H2 Deployment](#azure-local-23h2-deployment)
+- [Azure Local Deployment](#azure-local-deployment)
     - [About the lab](#about-the-lab)
         - [Prerequisites](#prerequisites)
         - [LabConfig](#labconfig)
@@ -20,9 +20,9 @@
             - [Step 4 Restart servers to apply changes](#step-4-restart-servers-to-apply-changes)
             - [Step 5 Rename Network adapters - Optional](#step-5-rename-network-adapters---optional)
         - [Task03 - Validate environment using Environment Checker tool](#task03---validate-environment-using-environment-checker-tool)
-        - [Task04 - Create Azure Resources](#task04---create-azure-resources)
-        - [Task05 - Create AD Prerequisites](#task05---create-ad-prerequisites)
-        - [Task 06a - Connect nodes to Azure - WebUI](#task-06a---connect-nodes-to-azure---webui)
+        - [Task04 - Create AD Prerequisites](#task04---create-ad-prerequisites)
+        - [Task05 - Create Azure Resources](#task05---create-azure-resources)
+        - [Task 06a - Connect nodes to Azure - Configurator App](#task-06a---connect-nodes-to-azure---configurator-app)
         - [Task 06b - Connect nodes to Azure - PowerShell](#task-06b---connect-nodes-to-azure---powershell)
         - [Task07 - Validation Prerequisites](#task07---validation-prerequisites)
             - [Step 1 Password complexity in MSLab is password not complex enough](#step-1-password-complexity-in-mslab-is-password-not-complex-enough)
@@ -32,7 +32,8 @@
             - [Step 1 - Populate latest SBE package AXNodes only](#step-1---populate-latest-sbe-package-axnodes-only)
             - [Step 2 - Exclude iDRAC adapters from cluster networks](#step-2---exclude-idrac-adapters-from-cluster-networks)
             - [Step 3 - Clear data disks](#step-3---clear-data-disks)
-            - [Step 4 - Reboot iDRAC if needed](#step-4---reboot-idrac-if-needed)
+            - [Step 4 - Add OEM info](#step-4---add-oem-info)
+            - [Step 5 - Reboot iDRAC if needed](#step-5---reboot-idrac-if-needed)
         - [Task 09 - Deploy Azure Local from Azure Portal](#task-09---deploy-azure-local-from-azure-portal)
 
 <!-- /TOC -->
@@ -456,7 +457,40 @@ You can select just failed URLs with this PowerShell
  
 ```
 
-### Task04 - Create Azure Resources
+### Task04 - Create AD Prerequisites
+
+Simply run the following PowerShell script to create objects
+
+> LCM = LifeCycle Management account. Account that will be used to domain join machines and create CAU account.
+
+```PowerShell
+$AsHCIOUName="OU=ALClus01,DC=Corp,DC=contoso,DC=com"
+$LCMUserName="ALClus01-LCMUser"
+$LCMPassword="LS1setup!LS1setup!"
+#Create LCM credentials
+$SecuredPassword = ConvertTo-SecureString $LCMPassword -AsPlainText -Force
+$LCMCredentials= New-Object System.Management.Automation.PSCredential ($LCMUserName,$SecuredPassword)
+
+#create objects in Active Directory
+    #install posh module for prestaging Active Directory
+    Install-PackageProvider -Name NuGet -Force
+    Install-Module AsHciADArtifactsPreCreationTool -Repository PSGallery -Force
+
+    #make sure active directory module and GPMC is installed
+    Install-WindowsFeature -Name RSAT-AD-PowerShell,GPMC
+
+    #populate objects
+    New-HciAdObjectsPreCreation -AzureStackLCMUserCredential $LCMCredentials -AsHciOUName $AsHCIOUName
+
+    #to check OU (and future cluster) in GUI install management tools
+    Install-WindowsFeature -Name "RSAT-ADDS","RSAT-Clustering"
+
+```
+
+![](./media/powershell08.png)
+
+
+### Task05 - Create Azure Resources
 
 Following script will simply create Resource Group and ARC Gateway (optional).
 
@@ -529,59 +563,14 @@ Write-Host -ForegroundColor Cyan @"
 ![](./media/edge01.png)
 
 
-### Task05 - Create AD Prerequisites
+### Task 06a - Connect nodes to Azure - Configurator App
 
-Simply run the following PowerShell script to create objects
+https://learn.microsoft.com/en-us/azure/azure-local/deploy/deployment-arc-register-configurator-app?view=azloc-2505
 
-> LCM = LifeCycle Management account. Account that will be used to domain join machines and create CAU account.
+As you now have all variables needed from Task03, you can proceed with installing and running [Configurator App](https://aka.ms/ConfiguratorAppForHCI) on management machine.
 
-```PowerShell
-$AsHCIOUName="OU=ALClus01,DC=Corp,DC=contoso,DC=com"
-$LCMUserName="ALClus01-LCMUser"
-$LCMPassword="LS1setup!LS1setup!"
-#Create LCM credentials
-$SecuredPassword = ConvertTo-SecureString $LCMPassword -AsPlainText -Force
-$LCMCredentials= New-Object System.Management.Automation.PSCredential ($LCMUserName,$SecuredPassword)
 
-#create objects in Active Directory
-    #install posh module for prestaging Active Directory
-    Install-PackageProvider -Name NuGet -Force
-    Install-Module AsHciADArtifactsPreCreationTool -Repository PSGallery -Force
-
-    #make sure active directory module and GPMC is installed
-    Install-WindowsFeature -Name RSAT-AD-PowerShell,GPMC
-
-    #populate objects
-    New-HciAdObjectsPreCreation -AzureStackLCMUserCredential $LCMCredentials -AsHciOUName $AsHCIOUName
-
-    #to check OU (and future cluster) in GUI install management tools
-    Install-WindowsFeature -Name "RSAT-ADDS","RSAT-Clustering"
-
-```
-
-![](./media/powershell08.png)
-
-### Task 06a - Connect nodes to Azure - WebUI
-
-As you now have all variables needed from Task03, you can proceed with navigating to WebUI on each node.
-
-In MSLab you can simply navigate to https://LTPNode1 and https://LTPNode2. In production environment you can either navigate to https://<serialnumber> or simply configure an IP address and navigate there. The webUI takes ~15 minutes to start after booting the servers.
-
-Log in with **Administrator/LS1setup!** and proceed with all three steps to register nodes to Azure.
-
-![](./media/edge02.png)
-
-![](./media/edge03.png)
-
-![](./media/edge04.png)
-
-![](./media/edge05.png)
-
-![](./media/edge06.png)
-
-![](./media/edge08.png)
-
-![](./media/edge09.png)
+Log in with **Administrator/LS1setup!** and proceed with all steps to register nodes to Azure.
 
 ### Task 06b - Connect nodes to Azure - PowerShell
 
@@ -590,58 +579,6 @@ Assuming you have still variables from Task03, you can continue with following P
 More info: https://learn.microsoft.com/en-us/azure/azure-local/deploy/deployment-arc-register-server-permissions?tabs=powershell
 
 ```PowerShell
-#region install modules (2503 ISO already contains modules, newer 2504 and 2505 does not)
-    #make sure nuget is installed on nodes
-    Invoke-Command -ComputerName $Servers -ScriptBlock {
-        Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
-    } -Credential $Credentials
-
-    #make sure azshci.arcinstaller is installed on nodes
-    Invoke-Command -ComputerName $Servers -ScriptBlock {
-        Install-Module -Name azshci.arcinstaller -Force
-    } -Credential $Credentials
-
-    #make sure Az.Resources module is installed on nodes
-    Invoke-Command -ComputerName $Servers -ScriptBlock {
-        Install-Module -Name Az.Resources -Force
-    } -Credential $Credentials
-
-    #make sure az.accounts module is installed on nodes
-    Invoke-Command -ComputerName $Servers -ScriptBlock {
-        Install-Module -Name az.accounts -Force
-    } -Credential $Credentials
-
-    #make sure az.accounts module is installed on nodes
-    Invoke-Command -ComputerName $Servers -ScriptBlock {
-        Install-Module -Name Az.ConnectedMachine -Force
-    } -Credential $Credentials
-#endregion
-
-#region or copy downloaded modules to nodes if above does not work
-<#
-    #download powershell modules
-    Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
-    $Modules="azshci.arcinstaller","Az.Resources","az.accounts","Az.ConnectedMachine"
-
-    #create folder for modules
-    New-Item -Path $env:USERPROFILE\Downloads\ -Name "modules" -ItemType Directory -ErrorAction Ignore
-    foreach ($Module in $Modules){
-        Save-Module -Name $Module -Path $env:USERPROFILE\Downloads\Modules
-    }
-
-    #copy modules to servers
-        #create sessions
-        $Sessions=New-PSSession -ComputerName $Servers -Credential $Credentials
-        #copy
-        foreach ($Session in $Sessions){
-            Copy-Item -Path $env:USERPROFILE\Downloads\Modules\* -Destination 'C:\Program Files\WindowsPowerShell\Modules' -Recurse -ToSession $Session -ErrorAction Ignore
-        }
-
-    #remove sessions
-    $Sessions | Remove-PSSession
-#>
-#endregion
-
 #Make sure resource providers are registered
 Register-AzResourceProvider -ProviderNamespace "Microsoft.HybridCompute" 
 Register-AzResourceProvider -ProviderNamespace "Microsoft.GuestConfiguration" 

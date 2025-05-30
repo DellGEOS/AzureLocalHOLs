@@ -1,45 +1,5 @@
 # Azure Local Cloud Deployment - Simplified lab
 
-<!-- TOC -->
-
-- [Azure Local Cloud Deployment - Simplified lab](#azure-local-cloud-deployment---simplified-lab)
-    - [About the lab](#about-the-lab)
-    - [Prerequisites](#prerequisites)
-    - [Task 01 - Navigating in the lab](#task-01---navigating-in-the-lab)
-        - [Step 01 - Explore Hyper-V VMs](#step-01---explore-hyper-v-vms)
-        - [Step 02 - Explore Management VM](#step-02---explore-management-vm)
-    - [Task 02 - Register servers into Azure](#task-02---register-servers-into-azure)
-        - [Step 01 - Create Azure Prerequisites](#step-01---create-azure-prerequisites)
-    - [Task 03 - Register servers to Azure](#task-03---register-servers-to-azure)
-        - [Step 01 - Navigate to webUI](#step-01---navigate-to-webui)
-        - [Step 02 - Log in](#step-02---log-in)
-        - [Step 03 - Initiate Arc Agent Setup](#step-03---initiate-arc-agent-setup)
-        - [Step 04 - Change IP to static](#step-04---change-ip-to-static)
-        - [Step 05 - Arc Agent Setup](#step-05---arc-agent-setup)
-        - [Step 06 - Repeat steps 01-05 for ALNode2](#step-06---repeat-steps-01-05-for-alnode2)
-    - [Task 04 - Explore what was done](#task-04---explore-what-was-done)
-        - [Step 01 - Open Azure Portal](#step-01---open-azure-portal)
-        - [Step 02 - Explore ALClus01-RG Resource Group](#step-02---explore-alclus01-rg-resource-group)
-    - [Task 05 - Configure prerequisites](#task-05---configure-prerequisites)
-        - [Step 01 - Create AD Prerequisites](#step-01---create-ad-prerequisites)
-        - [Step 02 - Explore what was created](#step-02---explore-what-was-created)
-        - [Step 03 - Fix some servers settings](#step-03---fix-some-servers-settings)
-    - [Task 06 - Deploy Azure Local cluster](#task-06---deploy-azure-local-cluster)
-        - [Step 01 - Navigate to Azure Local in Azure Portal](#step-01---navigate-to-azure-local-in-azure-portal)
-        - [Step 02 - Deploy Azure Local - Basics tab](#step-02---deploy-azure-local---basics-tab)
-        - [Step 03 - Deploy Azure Local - Configuration tab](#step-03---deploy-azure-local---configuration-tab)
-        - [Step 04 - Deploy Azure Local - Networking tab](#step-04---deploy-azure-local---networking-tab)
-        - [Step 03 - Deploy Azure Local - Management tab](#step-03---deploy-azure-local---management-tab)
-        - [Step 04 - Deploy Azure Local - Management tab](#step-04---deploy-azure-local---management-tab)
-        - [Step 05 - Deploy Azure Local - Advanced & Tags tab](#step-05---deploy-azure-local---advanced--tags-tab)
-        - [Step 06 - Deploy Azure Local - Validation tab](#step-06---deploy-azure-local---validation-tab)
-    - [Task 07 - Explore Azure Local cluster in Portal](#task-07---explore-azure-local-cluster-in-portal)
-        - [Step 01 - Explore deployment process](#step-01---explore-deployment-process)
-    - [Summary](#summary)
-
-<!-- /TOC -->
-
-
 
 ## About the lab
 
