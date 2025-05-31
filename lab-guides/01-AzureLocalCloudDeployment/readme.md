@@ -46,7 +46,9 @@ Dell only supports Dell ISO that includes Dell drivers.
 
 [Dell ISO](https://dell.github.io/azurestack-docs/docs/hci/supportmatrix/2503/goldenimages/)
 
-**Note: Currently (30.5.2025) deployment inside VMs does not work as registration complains about "ImageRecipeValidation Failed"**
+
+| Currently (30.5.2025) deployment inside VMs does not work as registration complains about "ImageRecipeValidation Failed |
+|-|
 
 ### Prerequisites
 
