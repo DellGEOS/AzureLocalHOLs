@@ -1,5 +1,6 @@
 # Azure Stack HCI 23H2 Lifecycle Manager Deep Dive
 <!-- TOC -->
+<!-- TOC -->
 
 - [Azure Stack HCI 23H2 Lifecycle Manager Deep Dive](#azure-stack-hci-23h2-lifecycle-manager-deep-dive)
     - [About the lab](#about-the-lab)
@@ -15,19 +16,6 @@
 - [Troubleshooting "HasPrerequisite" issue](#troubleshooting-hasprerequisite-issue)
 
 <!-- /TOC -->
-
-## About the lab
-
-In this lab you will learn about SBE packages and how to sideload them using Azure Stack HCI PowerShell modules.
-
-## SBE Packages
-
-SBE package is a package provided by OEM to consistently update Azure Stack HCI solutions.
-
-**Minimal**
-    Package, that contains only WDAC Policy. OEM can select the minimal level and keep using WAC Extension to update Azure Stack HCI Nodes (HPE).
-
-**Standard**
     Package contains both WDAC policy and Firmware/Drivers/Other software that is updated with CAU.
     This path was selected by DataON (only latest models), Lenovo (MX455 V3, MX450) and Dell (Both AX and MC nodes). Therefore Dell is the only OEM that provides SBE (with drivers and firmware) for N-1 Generation.
 

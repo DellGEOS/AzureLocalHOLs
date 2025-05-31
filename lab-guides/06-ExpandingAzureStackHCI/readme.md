@@ -1,21 +1,14 @@
 # Expanding Azure Stack HCI
-
 <!-- TOC -->
 
 - [Expanding Azure Stack HCI](#expanding-azure-stack-hci)
     - [About the lab](#about-the-lab)
     - [Prepare server](#prepare-server)
+    - [Add Network intent example - if there's no storage intent](#add-network-intent-example---if-theres-no-storage-intent)
     - [Add server](#add-server)
     - [Synchronize changes with Azure](#synchronize-changes-with-azure)
 
 <!-- /TOC -->
-
-## About the lab
-
-In this Hands-on lab you will expand one-node solution to two nodes. Just to illustrate rebuilding volumes, adding witness and more.
-
-You can simply follow [Cloud-based deployment HOL](https://github.com/DellGEOS/AzureStackHOLs/tree/main/lab-guides/01a-DeployAzureStackHCICluster-CloudBasedDeployment) and simply deploying one node.
-
 [Official documentation](https://learn.microsoft.com/en-us/azure-stack/hci/manage/add-server)
 
 I performed steps on AX nodes (physical servers), but code snippets are kept with virtual lab variables.
