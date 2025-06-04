@@ -595,7 +595,7 @@ Register-AzResourceProvider -ProviderNamespace "Microsoft.Storage"
     $id = (Get-AzContext).Account.Id
     $Cloud="AzureCloud"
 
-    #check if token is plaintext (older module version outputs plaintext, version 5 outputs secure string)
+    #check if token is plaintext (older module version outputs plaintext, version 5 outputs secure string) - will be fixed in 2506
     # Check if the token is a SecureString
     if ($armtoken -is [System.Security.SecureString]) {
         # Convert SecureString to plaintext
@@ -604,6 +604,26 @@ Register-AzResourceProvider -ProviderNamespace "Microsoft.Storage"
         Write-Output "Token is already plaintext."
     }
 
+    #check if ImageCustomizationScheduledTask is not in disabled state (if it's "ready", run it) - will be fixed in 2506
+    Invoke-Command -ComputerName $Servers -ScriptBlock {
+        $task=Get-ScheduledTask -TaskName ImageCustomizationScheduledTask
+        if ($task.State -ne "Disabled" -and $task.State -ne "Running"){
+            Write-Output "Starting Scheduled task ImageCustomizationScheduledTask on $env:ComputerName"
+            $task | Start-ScheduledTask
+        }
+    } -Credential $Credentials
+    #wait until it's disabled
+    Invoke-Command -ComputerName $Servers -ScriptBlock {
+        $task=Get-ScheduledTask -TaskName ImageCustomizationScheduledTask
+        if ($task.state -eq "running"){
+            do {
+                Write-Output "Waiting for ImageCustomizationScheduledTask on $env:computerName to finish"
+                Start-Sleep 1
+            } while ($task.state -ne "Disabled")
+        }
+    } -Credential $Credentials
+
+    #register servers
     Invoke-Command -ComputerName $Servers -ScriptBlock {
         Invoke-AzStackHciArcInitialization -SubscriptionID $using:SubscriptionID -ResourceGroup $using:ResourceGroupName -TenantID $using:TenantID -Cloud $using:Cloud -Region $Using:Location -ArmAccessToken $using:ARMtoken -AccountID $using:id #-ArcGatewayID $using:ArcGatewayID
     } -Credential $Credentials
