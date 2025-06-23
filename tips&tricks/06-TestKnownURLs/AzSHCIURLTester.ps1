@@ -253,6 +253,7 @@ if ($regionUrls.ContainsKey($region)) {
 # Add Dell URLs
 $additionalUrls = @(
     [PSCustomObject]@{ RowID = 0; URL = "downloads.emc.com"; Port = 443; IsWildcard = $false; Note = "Dell URL"; Status = ""; IPAddress = "" },
+    [PSCustomObject]@{ RowID = 0; URL = "downloads.dell.com"; Port = 443; IsWildcard = $false; Note = "Dell URL"; Status = ""; IPAddress = "" },
     [PSCustomObject]@{ RowID = 0; URL = "dl.dell.com"; Port = 443; IsWildcard = $false; Note = "Dell URL"; Status = ""; IPAddress = "" },
     [PSCustomObject]@{ RowID = 0; URL = "esrs3-core.emc.com"; Port = 443; IsWildcard = $false; Note = "Dell URL"; Status = ""; IPAddress = "" },
     [PSCustomObject]@{ RowID = 0; URL = "esrs3-core.emc.com"; Port = 8443; IsWildcard = $false; Note = "Dell URL"; Status = ""; IPAddress = "" },
