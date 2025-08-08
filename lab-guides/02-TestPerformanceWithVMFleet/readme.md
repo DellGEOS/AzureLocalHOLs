@@ -21,7 +21,7 @@ The machine where these tasks will be executed needs to have Hyper-V, and Hyper-
 
 In the lab several PowerShell modules will be downloaded.
 
-## Task 01 - Create Windows Server 2022 Core VHD
+## Task 01 - Create Windows Server 2022 Core VHD (WS2025 does not work)
 
 To create Windows Server 2022 VHD you will need ISO file. Both ISO and VHD can be downloaded from [Windows Server Evaluation Center](https://www.microsoft.com/en-us/evalcenter/download-windows-server-2022), however I would recommend creating your own VHD as VHD is 127GB. Since during VMFLeet creation is VHD converted to fixed VHD, it will expand and may consume your storage. It's better to create your own taht is smaller (like 30GB)
 
