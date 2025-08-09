@@ -143,7 +143,9 @@ Notice, that host is replying. Latest image Azure Local already allows ICMP pack
 
 ```PowerShell
 $servers = @("ALNode1","ALNode2")
-Test-NetConnection -ComputerName $servers -CommonTCPPort WINRM
+foreach ($server in $servers){
+Test-NetConnection -ComputerName $server -CommonTCPPort WINRM
+}
 
 ```
 
