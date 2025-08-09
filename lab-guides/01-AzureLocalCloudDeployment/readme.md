@@ -58,16 +58,16 @@ Dell only supports Dell ISO that includes Dell drivers.
 
 * Make sure you hydrate latest Azure Local Image using CreateParentDisk.ps1 located in ParentDisks folder
 
-* Note: this lab uses ~60GB RAM. To reduce amount of RAM, you would need to reduce number of nodes.
+* Note: this lab uses ~76GB RAM. To reduce amount of RAM, you would need to reduce number of nodes.
 
 ### LabConfig
 
 ```PowerShell
 $LabConfig=@{AllowedVLANs="1-10,711-719" ; DomainAdminName='LabAdmin'; AdminPassword='LS1setup!' ; DCEdition='4'; Internet=$true; TelemetryLevel='Full' ; TelemetryNickname='' ; AdditionalNetworksConfig=@(); VMs=@()}
 
-#Azure Local 23H2
+#Azure Local 24H2
 #labconfig will not domain join VMs
-1..2 | ForEach-Object {$LABConfig.VMs += @{ VMName = "ALNode$_" ; Configuration = 'S2D' ; ParentVHD = 'AzSHCI24H2_G2.vhdx' ; HDDNumber = 4 ; HDDSize= 1TB ; MemoryStartupBytes= 24GB; VMProcessorCount="MAX" ; vTPM=$true ; Unattend="NoDjoin" ; NestedVirt=$true }}
+1..2 | ForEach-Object {$LABConfig.VMs += @{ VMName = "ALNode$_" ; Configuration = 'S2D' ; ParentVHD = 'AzSHCI24H2_G2.vhdx' ; HDDNumber = 4 ; HDDSize= 1TB ; MemoryStartupBytes= 32GB; VMProcessorCount="MAX" ; vTPM=$true ; Unattend="NoDjoin" ; NestedVirt=$true }}
 
 #Windows Admin Center in GW mode
 $LabConfig.VMs += @{ VMName = 'WACGW' ; ParentVHD = 'Win2025Core_G2.vhdx'; MGMTNICs=1}
@@ -142,7 +142,8 @@ Notice, that host is replying. Latest image Azure Local already allows ICMP pack
 #### Step 2 Check WinRM connectivity
 
 ```PowerShell
-Test-NetConnection -ComputerName "ALNode1","ALNode2" -CommonTCPPort WINRM
+$servers = @("ALNode1","ALNode2")
+Test-NetConnection -ComputerName $servers -CommonTCPPort WINRM
 
 ```
 
@@ -470,7 +471,7 @@ $LCMPassword="LS1setup!LS1setup!"
 $SecuredPassword = ConvertTo-SecureString $LCMPassword -AsPlainText -Force
 $LCMCredentials= New-Object System.Management.Automation.PSCredential ($LCMUserName,$SecuredPassword)
 
-#create objects in Active Directory
+#Create objects for Azure Local in Active Directory
     #install posh module for prestaging Active Directory
     Install-PackageProvider -Name NuGet -Force
     Install-Module AsHciADArtifactsPreCreationTool -Repository PSGallery -Force
@@ -491,35 +492,40 @@ $LCMCredentials= New-Object System.Management.Automation.PSCredential ($LCMUserN
 
 ### Task05 - Create Azure Resources
 
-Following script will simply create Resource Group and ARC Gateway (optional).
+Following script will simply create Resource Group and Arc Gateway (optional).
 
 ```PowerShell
 $GatewayName="ALClus01-ArcGW"
 $ResourceGroupName="ALClus01-RG"
+
+#List of shortnames for Azure regions (Azure Shell)
+#az account list-locations -o table
 $Location="eastus"
 
-#login to azure
+#Login to azure
     #download Azure module
     Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
+    
+    #Starting with AzL 24H2 2507, az.accounts is not longer failing and will continue to work with the latest version of this module.
     if (!(Get-InstalledModule -Name az.accounts -ErrorAction Ignore)){
         Install-Module -Name Az.Accounts -Force 
     }
-    #login using device authentication
+    #Login using device authentication
     Connect-AzAccount -UseDeviceAuthentication
 
-    #assuming new az.accounts module was used and it asked you what subscription to use - then correct subscription is selected for context
+    #Assuming new az.accounts module was used and it asked you what subscription to use - then correct subscription is selected for context
     $Subscription=(Get-AzContext).Subscription
 
-    #install az resources module
+    #Install az resources module
         if (!(Get-InstalledModule -Name az.resources -ErrorAction Ignore)){
             Install-Module -Name az.resources -Force
         }
 
-    #create resource group
+    #Create resource group for Azure Local
         if (-not(Get-AzResourceGroup -Name $ResourceGroupName -ErrorAction Ignore)){
             New-AzResourceGroup -Name $ResourceGroupName -Location $location
         }
-#region (Optional) configure ARC Gateway
+#region configure Arc Gateway (Optional)
 <#
     #install az.arcgateway module
         if (!(Get-InstalledModule -Name az.arcgateway -ErrorAction Ignore)){
@@ -531,7 +537,7 @@ $Location="eastus"
         Register-AzResourceProvider -ProviderNamespace "Microsoft.HybridConnectivity"
         Register-AzResourceProvider -ProviderNamespace "Microsoft.AzureStackHCI"
 
-    #create GW
+    # Create Arc GW (Preview)
     if (Get-AzArcGateway -Name $gatewayname -ResourceGroupName $ResourceGroupName -ErrorAction Ignore){
         $ArcGWInfo=Get-AzArcGateway -Name $gatewayname -ResourceGroupName $ResourceGroupName
     }else{
@@ -540,13 +546,13 @@ $Location="eastus"
 #>
 #endregion
 
-#generate variables for use in this window
+#Generate variables for use in this window
 $SubscriptionID=$Subscription.ID
 $Region=$Location
 $TenantID=$Subscription.TenantID
 $ArcGatewayID=$ArcGWInfo.ID
 
-#output variables (so you can just copy it and have powershell code to create variables in another session or you can copy it to WebUI deployment)
+#Output variables (so you can just copy it and have powershell code to create variables in another session or you can copy it to WebUI deployment)
 Write-Host -ForegroundColor Cyan @"
     #Variables to copy
     `$SubscriptionID=`"$($Subscription.ID)`"
@@ -590,21 +596,23 @@ Register-AzResourceProvider -ProviderNamespace "Microsoft.HybridContainerService
 Register-AzResourceProvider -ProviderNamespace "Microsoft.Attestation"
 Register-AzResourceProvider -ProviderNamespace "Microsoft.Storage"
 
-#deploy ARC Agent (with Arc Gateway, without proxy. For more examples visit https://learn.microsoft.com/en-us/azure/azure-local/deploy/deployment-arc-register-server-permissions?tabs=powershell)
+    #Deploy Arc Agent (with Arc Gateway, without proxy. For more examples visit https://learn.microsoft.com/en-us/azure/azure-local/deploy/deployment-arc-register-server-permissions?tabs=powershell)
     $armtoken = (Get-AzAccessToken).Token
     $id = (Get-AzContext).Account.Id
     $Cloud="AzureCloud"
 
-    #check if token is plaintext (older module version outputs plaintext, version 5 outputs secure string) - will be fixed in 2506
-    # Check if the token is a SecureString
+    #These steps are  this when using AzL 24H2 2507. 
+    #region manual checks 
+    #Check if token is plaintext (older module version outputs plaintext, version 5 outputs secure string) - is fixed in 2507.
+    #Check if the token is a SecureString
     if ($armtoken -is [System.Security.SecureString]) {
-        # Convert SecureString to plaintext
+        #Convert SecureString to plaintext
         $armtoken = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto([System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($armtoken))
     }else {
         Write-Output "Token is already plaintext."
     }
 
-    #check if ImageCustomizationScheduledTask is not in disabled state (if it's "ready", run it) - will be fixed in 2506
+    #Check if ImageCustomizationScheduledTask is not in disabled state (if it's "ready", run it) - will be fixed in 2506
     Invoke-Command -ComputerName $Servers -ScriptBlock {
         $task=Get-ScheduledTask -TaskName ImageCustomizationScheduledTask
         if ($task.State -ne "Disabled" -and $task.State -ne "Running"){
@@ -612,7 +620,7 @@ Register-AzResourceProvider -ProviderNamespace "Microsoft.Storage"
             $task | Start-ScheduledTask
         }
     } -Credential $Credentials
-    #wait until it's disabled
+    #Wait until it's disabled
     Invoke-Command -ComputerName $Servers -ScriptBlock {
         $task=Get-ScheduledTask -TaskName ImageCustomizationScheduledTask
         if ($task.state -eq "running"){
@@ -622,8 +630,9 @@ Register-AzResourceProvider -ProviderNamespace "Microsoft.Storage"
             } while ($task.state -ne "Disabled")
         }
     } -Credential $Credentials
+    #endregion
 
-    #register servers
+    #Onboarding Azure Local Nodes to Arc
     Invoke-Command -ComputerName $Servers -ScriptBlock {
         Invoke-AzStackHciArcInitialization -SubscriptionID $using:SubscriptionID -ResourceGroup $using:ResourceGroupName -TenantID $using:TenantID -Cloud $using:Cloud -Region $Using:Location -ArmAccessToken $using:ARMtoken -AccountID $using:id #-ArcGatewayID $using:ArcGatewayID
     } -Credential $Credentials
@@ -655,8 +664,10 @@ In MSLab password is not complex enough. You can change password using following
 
 ```
 
-#### Step 2 IP Configuration
+#### Step 2 IP Configuration 
 
+Step 2 IP Configuration can be skipped for AzL 24H2 2507. Except when using seperated virtual vNICs simulating storage adapters. Set them from DHCP to Manual and remove their IP adresses. 
+In 2507 Management Interfaces may now retain their DHCP config.
 In MSLab is DHCP enabled. This script will make sure there's just one GW and DHCP address is converted to Static.
 
 ```PowerShell
@@ -708,14 +719,17 @@ Foreach ($Server in $Servers){
     }
 }
 
-#if offset is greater than 10 seconds (I pulled this number out of thin air. I guess it should be less than 5 minutes or so), simply configure NTP servers
+#If offset is greater than 10 seconds (I pulled this number out of thin air. I guess it should be less than 5 minutes or so), simply configure NTP servers
 
 If ($SyncNeeded){
     Write-Output "Time offset found, NTP Server needs to be configured."
     #Configure NTP
     Invoke-Command -ComputerName $servers -ScriptBlock {
             w32tm /config /manualpeerlist:$using:NTPServer /syncfromflags:manual /update
+
+#Make sure the sync corrects any existing offsets, these will make the validation fail.
             Restart-Service w32time
+            w32tm /resync /nowait
     } -Credential $Credentials
 }
 
@@ -734,6 +748,7 @@ Basics:
 Configuration:
     New Configuration
 
+Default mslab configuration (emulating 2 nodes fully converged)
 Networking
     Network Switch for storage
     Group All traffic
@@ -743,6 +758,25 @@ Networking
     Network adapter 2:          Ethernet 2
     Network adapter 2 VLAN ID:  712 (default)
 
+
+Alternative configuration (emulating 2 node non-converged, storage switchless)
+Networking
+    no Switch for storage
+    Compute / Management + Storage Intent
+
+    Compute / Management intent
+    Network adapter 1:          Ethernet 1
+    Network adapter 2:          Ethernet 2
+    
+    Storage intent
+    Network adapter 3:          Ethernet 3
+    Network adapter 3 VLAN ID:  711 (default)
+    Network adapter 4:          Ethernet 4
+    Network adapter 4 VLAN ID:  712 (default)
+
+
+
+    **When using non-converged make sure to select this on each intent.**
     RDMA Protocol:              Disabled (in case you are running lab in VMs)
     Jumbo Frames:               1514 (in case you are running lab in VMs as hyper-v does not by default support Jumbo Frames)
 
@@ -773,7 +807,10 @@ Security:
         Unselect Bitlocker for data volumes (would consume too much space)
 
 Advanced:
-    Create workload volumes (Default)
+**Please understand that the workload volumes will use thin provisioning, but their default max size is about 2x larger than the pool capacity. This is by-design.**
+**Keep monitoring the space on the physical disks in addition to CSV and Pool size. Warning: There are reports that deleting files on thin provisioned ReFS (CSV) does unclaim used space.**
+    
+    Create workload volumes (Default). 
 
 Tags:
     <keep default>
