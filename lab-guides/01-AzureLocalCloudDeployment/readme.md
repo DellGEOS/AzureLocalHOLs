@@ -58,7 +58,7 @@ Dell only supports Dell ISO that includes Dell drivers.
 
 * Make sure you hydrate latest Azure Local Image using CreateParentDisk.ps1 located in ParentDisks folder
 
-* Note: this lab uses ~76GB RAM. To reduce amount of RAM, you would need to reduce number of nodes.
+* Note: this lab uses ~85GB RAM. To reduce amount of RAM, you would need to reduce number of nodes.
 
 ### LabConfig
 
