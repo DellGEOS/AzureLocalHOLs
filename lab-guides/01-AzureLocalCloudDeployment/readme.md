@@ -595,6 +595,7 @@ Register-AzResourceProvider -ProviderNamespace "Microsoft.ResourceConnector"
 Register-AzResourceProvider -ProviderNamespace "Microsoft.HybridContainerService"
 Register-AzResourceProvider -ProviderNamespace "Microsoft.Attestation"
 Register-AzResourceProvider -ProviderNamespace "Microsoft.Storage"
+Register-AzResourceProvider -ProviderNamespace "Microsoft.Insights"
 
     #Deploy Arc Agent (with Arc Gateway, without proxy. For more examples visit https://learn.microsoft.com/en-us/azure/azure-local/deploy/deployment-arc-register-server-permissions?tabs=powershell)
     $armtoken = (Get-AzAccessToken).Token
