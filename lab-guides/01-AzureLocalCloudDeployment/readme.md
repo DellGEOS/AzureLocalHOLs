@@ -142,9 +142,9 @@ Notice, that host is replying. Latest image Azure Local already allows ICMP pack
 #### Step 2 Check WinRM connectivity
 
 ```PowerShell
-$servers = @("ALNode1","ALNode2")
-foreach ($server in $servers){
-Test-NetConnection -ComputerName $server -CommonTCPPort WINRM
+$Servers = @("ALNode1","ALNode2")
+foreach ($Server in $Servers){
+    Test-NetConnection -ComputerName $Server -CommonTCPPort WINRM
 }
 
 ```
