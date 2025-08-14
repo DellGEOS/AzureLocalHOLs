@@ -4,7 +4,7 @@
 
 - [Testing Azure Stack HCI Performance with VMFleet](#testing-azure-stack-hci-performance-with-vmfleet)
     - [Prerequsites](#prerequsites)
-    - [Task 01 - Create Windows Server 2022 Core VHD](#task-01---create-windows-server-2022-core-vhd)
+    - [Task 01 - Create Windows Server 2022 Core VHD WS2025 does not work](#task-01---create-windows-server-2022-core-vhd-ws2025-does-not-work)
     - [Task 02 - Create vmfleet image](#task-02---create-vmfleet-image)
     - [Task 02 - Configure VMFleet prerequsites](#task-02---configure-vmfleet-prerequsites)
     - [Task 03 - Deploy VMFleet and measure performance](#task-03---deploy-vmfleet-and-measure-performance)
