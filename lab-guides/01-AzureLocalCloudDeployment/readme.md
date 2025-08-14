@@ -46,10 +46,6 @@ Dell only supports Dell ISO that includes Dell drivers.
 
 [Dell ISO](https://dell.github.io/azurestack-docs/docs/hci/supportmatrix/2503/goldenimages/)
 
-
-| Currently (30.5.2025) deployment inside VMs does not work as registration complains about "ImageRecipeValidation Failed |
-|-|
-
 ### Prerequisites
 
 * Hydrated MSLab with LabConfig from [01-HydrateMSLab](../../admin-guides/01-HydrateMSLab/readme.md)
@@ -60,17 +56,18 @@ Dell only supports Dell ISO that includes Dell drivers.
 
 * Note: this lab uses ~60GB RAM. To reduce amount of RAM, you would need to reduce number of nodes.
 
+* MemoryStartupBytes is lower than what's recommended in Microsoft Guide, but it still works. You can experiment with RAM down to 16GB.
+
+* if you want different number of NICs to experiment with different NIC configuration, you can add parameter MGMTNICs=4 or MGMTNICs=6 to increase number of NICs.
+
 ### LabConfig
 
 ```PowerShell
 $LabConfig=@{AllowedVLANs="1-10,711-719" ; DomainAdminName='LabAdmin'; AdminPassword='LS1setup!' ; DCEdition='4'; Internet=$true; TelemetryLevel='Full' ; TelemetryNickname='' ; AdditionalNetworksConfig=@(); VMs=@()}
 
-#Azure Local 23H2
+#Azure Local 24H2
 #labconfig will not domain join VMs
-1..2 | ForEach-Object {$LABConfig.VMs += @{ VMName = "ALNode$_" ; Configuration = 'S2D' ; ParentVHD = 'AzSHCI24H2_G2.vhdx' ; HDDNumber = 4 ; HDDSize= 1TB ; MemoryStartupBytes= 24GB; VMProcessorCount="MAX" ; vTPM=$true ; Unattend="NoDjoin" ; NestedVirt=$true }}
-
-#Windows Admin Center in GW mode
-$LabConfig.VMs += @{ VMName = 'WACGW' ; ParentVHD = 'Win2025Core_G2.vhdx'; MGMTNICs=1}
+1..2 | ForEach-Object {$LABConfig.VMs += @{ VMName = "ALNode$_" ; Configuration = 'S2D' ; ParentVHD = 'AzSHCI24H2_G2.vhdx' ; HDDNumber = 4 ; HDDSize= 1TB ; MemoryStartupBytes= 20GB; VMProcessorCount="MAX" ; vTPM=$true ; Unattend="NoDjoin" ; NestedVirt=$true }}
 
 #Management machine (windows server 2025)
 $LabConfig.VMs += @{ VMName = 'Management' ; ParentVHD = 'Win2025_G2.vhdx'; MGMTNICs=1 ; AddToolsVHD=$True }
@@ -142,8 +139,10 @@ Notice, that host is replying. Latest image Azure Local already allows ICMP pack
 #### Step 2 Check WinRM connectivity
 
 ```PowerShell
-Test-NetConnection -ComputerName "ALNode1","ALNode2" -CommonTCPPort WINRM
-
+$Servers="ALNode1","ALNode2"
+foreach ($Server in $Servers){
+    Test-NetConnection -ComputerName $Server -CommonTCPPort WINRM
+}
 ```
 
 ![](./media/powershell03.png)
@@ -217,10 +216,10 @@ Invoke-Command -ComputerName $servers -ScriptBlock {
         } -Credential $Credentials
         If ($NICs | Where InterfaceDescription -like "Mellanox*" ){
             #nvidia/mellanox
-            $URL="https://dl.dell.com/FOLDER11591518M/2/Network_Driver_G6M58_WN64_24.04.03_01.EXE"
+            $URL="https://dl.dell.com/FOLDER13036121M/1/Network_Driver_3G71F_WN64_25.1_A00.EXE"
         }else{
             #intel
-            $URL="https://dl.dell.com/FOLDER11890492M/1/Network_Driver_6JHVK_WN64_23.0.0_A00.EXE"
+            $URL="https://dl.dell.com/FOLDER13356094M/2/Network_Driver_J4YG9_WN64_24.0.0_A00.EXE"
         }
     #endregion
 
@@ -433,12 +432,14 @@ Since we already have credentials and TrustedHosts configured in Powershell from
 > for some reason I was not able to run it using sessions as it complained about not being able to create PSDrive
 
 ```PowerShell
-#install modules
+#install modules (Not needed with latest media
+<#
 Invoke-Command -ComputerName $Servers -Scriptblock {
     Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
     Install-Module PowerShellGet -AllowClobber -Force
     Install-Module -Name AzStackHci.EnvironmentChecker -Force
 } -Credential $Credentials
+#>
 #validate environment
 $result=Invoke-Command -ComputerName $Servers -Scriptblock {
     Invoke-AzStackHciConnectivityValidation -PassThru
@@ -470,7 +471,7 @@ $LCMPassword="LS1setup!LS1setup!"
 $SecuredPassword = ConvertTo-SecureString $LCMPassword -AsPlainText -Force
 $LCMCredentials= New-Object System.Management.Automation.PSCredential ($LCMUserName,$SecuredPassword)
 
-#create objects in Active Directory
+#create objects for Azure Local in Active Directory
     #install posh module for prestaging Active Directory
     Install-PackageProvider -Name NuGet -Force
     Install-Module AsHciADArtifactsPreCreationTool -Repository PSGallery -Force
@@ -491,12 +492,12 @@ $LCMCredentials= New-Object System.Management.Automation.PSCredential ($LCMUserN
 
 ### Task05 - Create Azure Resources
 
-Following script will simply create Resource Group and ARC Gateway (optional).
+Following script will simply create Resource Group and Arc Gateway (optional).
 
 ```PowerShell
 $GatewayName="ALClus01-ArcGW"
 $ResourceGroupName="ALClus01-RG"
-$Location="eastus"
+$Location="eastus" #list of supported regions: https://learn.microsoft.com/en-us/azure/azure-local/concepts/system-requirements-23h2?view=azloc-2507&tabs=azure-public#azure-requirements
 
 #login to azure
     #download Azure module
@@ -519,7 +520,7 @@ $Location="eastus"
         if (-not(Get-AzResourceGroup -Name $ResourceGroupName -ErrorAction Ignore)){
             New-AzResourceGroup -Name $ResourceGroupName -Location $location
         }
-#region (Optional) configure ARC Gateway
+#region (Optional) configure Arc Gateway
 <#
     #install az.arcgateway module
         if (!(Get-InstalledModule -Name az.arcgateway -ErrorAction Ignore)){
@@ -574,10 +575,11 @@ Log in with **Administrator/LS1setup!** and proceed with all steps to register n
 
 Assuming you have still variables from Task03, you can continue with following PowerShell
 
-More info: https://learn.microsoft.com/en-us/azure/azure-local/deploy/deployment-arc-register-server-permissions?tabs=powershell
+More info: https://learn.microsoft.com/en-us/azure/azure-local/deploy/deployment-Arc-register-server-permissions?tabs=powershell
 
 ```PowerShell
 #Make sure resource providers are registered
+Register-AzResourceProvider -ProviderNamespace "Microsoft.AzureArcData"
 Register-AzResourceProvider -ProviderNamespace "Microsoft.HybridCompute" 
 Register-AzResourceProvider -ProviderNamespace "Microsoft.GuestConfiguration" 
 Register-AzResourceProvider -ProviderNamespace "Microsoft.HybridConnectivity" 
@@ -589,21 +591,24 @@ Register-AzResourceProvider -ProviderNamespace "Microsoft.ResourceConnector"
 Register-AzResourceProvider -ProviderNamespace "Microsoft.HybridContainerService"
 Register-AzResourceProvider -ProviderNamespace "Microsoft.Attestation"
 Register-AzResourceProvider -ProviderNamespace "Microsoft.Storage"
+Register-AzResourceProvider -ProviderNamespace "Microsoft.Insights"
 
-#deploy ARC Agent (with Arc Gateway, without proxy. For more examples visit https://learn.microsoft.com/en-us/azure/azure-local/deploy/deployment-arc-register-server-permissions?tabs=powershell)
+#deploy Arc Agent (with Arc Gateway, without proxy. For more examples visit https://learn.microsoft.com/en-us/azure/azure-local/deploy/deployment-arc-register-server-permissions?tabs=powershell)
     $armtoken = (Get-AzAccessToken).Token
     $id = (Get-AzContext).Account.Id
     $Cloud="AzureCloud"
 
-    #check if token is plaintext (older module version outputs plaintext, version 5 outputs secure string) - will be fixed in 2506
+    #check if token is plaintext (older module version outputs plaintext, version 5 outputs secure string)
     # Check if the token is a SecureString
     if ($armtoken -is [System.Security.SecureString]) {
         # Convert SecureString to plaintext
         $armtoken = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto([System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($armtoken))
+        Write-Output "Token converted to plaintext."
     }else {
         Write-Output "Token is already plaintext."
     }
 
+<# no longer needed
     #check if ImageCustomizationScheduledTask is not in disabled state (if it's "ready", run it) - will be fixed in 2506
     Invoke-Command -ComputerName $Servers -ScriptBlock {
         $task=Get-ScheduledTask -TaskName ImageCustomizationScheduledTask
@@ -619,10 +624,11 @@ Register-AzResourceProvider -ProviderNamespace "Microsoft.Storage"
             do {
                 Write-Output "Waiting for ImageCustomizationScheduledTask on $env:computerName to finish"
                 Start-Sleep 1
+                $task=Get-ScheduledTask -TaskName ImageCustomizationScheduledTask
             } while ($task.state -ne "Disabled")
         }
     } -Credential $Credentials
-
+#> 
     #register servers
     Invoke-Command -ComputerName $Servers -ScriptBlock {
         Invoke-AzStackHciArcInitialization -SubscriptionID $using:SubscriptionID -ResourceGroup $using:ResourceGroupName -TenantID $using:TenantID -Cloud $using:Cloud -Region $Using:Location -ArmAccessToken $using:ARMtoken -AccountID $using:id #-ArcGatewayID $using:ArcGatewayID
@@ -753,7 +759,8 @@ Networking
     DNS Server:                 10.0.0.1
 
 Management
-    Custom location name:       ALClus01CustomLocation (default)\
+    Custom location name:       ALClus01
+
     Azure storage account name: <just generate new>
 
     Domain:                     corp.contoso.com
@@ -774,6 +781,9 @@ Security:
 
 Advanced:
     Create workload volumes (Default)
+
+    **Please understand that the workload volumes will use thin provisioning, but their default max size is about 2x larger than the pool capacity. This is by-design.**
+
 
 Tags:
     <keep default>
