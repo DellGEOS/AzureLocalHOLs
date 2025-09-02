@@ -472,7 +472,6 @@ $LCMCredentials= New-Object System.Management.Automation.PSCredential ($LCMUserN
 
 #create objects for Azure Local in Active Directory
     #install posh module for prestaging Active Directory
-    Install-PackageProvider -Name NuGet -Force
     Install-Module AsHciADArtifactsPreCreationTool -Repository PSGallery -Force
 
     #make sure active directory module and GPMC is installed
