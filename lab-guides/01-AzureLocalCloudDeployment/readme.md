@@ -145,10 +145,14 @@ $LCMPassword="LS1setup!LS1setup!"
 $SecuredPassword = ConvertTo-SecureString $LCMPassword -AsPlainText -Force
 $LCMCredentials= New-Object System.Management.Automation.PSCredential ($LCMUserName,$SecuredPassword)
 
-#Arc Gateway variables
+#variables for Arc Gateway and Azure ResourceGroup and Location
 $GatewayName="ALClus01-ArcGW"
 $ResourceGroupName="ALClus01-RG"
 $Location="eastus" #list of supported regions: https://learn.microsoft.com/en-us/azure/azure-local/concepts/system-requirements-23h2?view=azloc-2507&tabs=azure-public#azure-requirements
+
+#Variable for NTP time source for Azure Local nodes
+$NTPServer="DC.corp.contoso.com"  
+
 ```
 
 
@@ -708,8 +712,6 @@ In MSLab is DHCP enabled. This script will make sure there's just one GW and DHC
 This script simply tests if offset between management machine and any of the servers is greater than 2s. If so, it will configure NTP server. Just provide your NTP server (you can use domain controller)
 
 ```PowerShell
-$NTPServer="DC.corp.contoso.com"  
-
 #test if there is an time offset on servers
 Foreach ($Server in $Servers){
     $localtime=get-date
