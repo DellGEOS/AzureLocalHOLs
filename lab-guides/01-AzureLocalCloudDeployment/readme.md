@@ -435,7 +435,7 @@ Since we already have credentials and TrustedHosts configured in Powershell from
 #install modules (Not needed with latest media
 <#
 Invoke-Command -ComputerName $Servers -Scriptblock {
-    Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
+    Install-PackageProvider -Name PowerShellGet -Force
     Install-Module PowerShellGet -AllowClobber -Force
     Install-Module -Name AzStackHci.EnvironmentChecker -Force
 } -Credential $Credentials
@@ -501,7 +501,7 @@ $Location="eastus" #list of supported regions: https://learn.microsoft.com/en-us
 
 #login to azure
     #download Azure module
-    Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
+    Install-PackageProvider -Name PowerShellGet -Force
     if (!(Get-InstalledModule -Name az.accounts -ErrorAction Ignore)){
         Install-Module -Name Az.Accounts -Force 
     }
