@@ -526,7 +526,7 @@ Following script will simply create Resource Group and Arc Gateway (optional).
         }
 
     #create resource group
-        if (-not(Get-AzResourceGroup -Name  -ErrorAction Ignore)){
+        if (-not(Get-AzResourceGroup -Name $ResourceGroupName -ErrorAction Ignore)){
             New-AzResourceGroup -Name $ResourceGroupName -Location $location
         }
 #region (Optional) configure Arc Gateway
