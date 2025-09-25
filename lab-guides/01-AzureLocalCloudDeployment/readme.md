@@ -233,7 +233,7 @@ Invoke-Command -ComputerName $servers -ScriptBlock {
         #$proxy.Address = $proxyAdr
         #$proxy.useDefaultCredentials = $true
         $WebClient.proxy = $proxy
-        #add headers wihth user-agent as some versions of SBE requires it for download
+        #add headers wihth user-agent as some Dell sites requires it for download
         $webclient.Headers.Add("User-Agent", "WhateverUser-AgentString/1.0")
         $FileName=$($URL.Split("/")| Select-Object -Last 1)
         $WebClient.DownloadFile($URL,"$env:userprofile\Downloads\$FileName")
@@ -736,7 +736,7 @@ If ($SyncNeeded){
     #16G
     $LatestSBE="https://dl.dell.com/FOLDER13460338M/1/Bundle_SBE_Dell_AX-16G-45n0c_4.2.2506.1600.zip"
     #or 15G (not yet 24H2)
-    #$LatestSBE="https://dl.dell.com/FOLDER13260878M/1/Bundle_SBE_Dell_AX-15G_4.1.2505.1503.zip"
+    #$LatestSBE="https://dl.dell.com/FOLDER13607158M/1/Bundle_SBE_Dell_AX-15G_4.2.2506.1506.zip"
 
     #region populate SBE package
         #Set up web client to download files with authenticated web request in case there's a proxy
