@@ -28,6 +28,7 @@
             - [Step 1 Password complexity in MSLab is password not complex enough](#step-1-password-complexity-in-mslab-is-password-not-complex-enough)
             - [Step 2 IP Configuration](#step-2-ip-configuration)
             - [Step 3 NTP Server if NTP protocol is blocked by firewall and servers time is not synced](#step-3-ntp-server-if-ntp-protocol-is-blocked-by-firewall-and-servers-time-is-not-synced)
+            - [Step 4 - Populate latest SBE package - AXnodes - only if you are not using Dell media](#step-4---populate-latest-sbe-package---axnodes---only-if-you-are-not-using-dell-media)
         - [Task 08 - Deploy Azure Local from Azure Portal](#task-08---deploy-azure-local-from-azure-portal)
 
 <!-- /TOC -->
@@ -232,7 +233,7 @@ Invoke-Command -ComputerName $servers -ScriptBlock {
         #$proxy.Address = $proxyAdr
         #$proxy.useDefaultCredentials = $true
         $WebClient.proxy = $proxy
-        #add headers wihth user-agent as some versions of SBE requires it for download
+        #add headers wihth user-agent as some Dell sites requires it for download
         $webclient.Headers.Add("User-Agent", "WhateverUser-AgentString/1.0")
         $FileName=$($URL.Split("/")| Select-Object -Last 1)
         $WebClient.DownloadFile($URL,"$env:userprofile\Downloads\$FileName")
@@ -725,6 +726,56 @@ If ($SyncNeeded){
     } -Credential $Credentials
 }
 
+```
+
+#### Step 4 - Populate latest SBE package - AXnodes - only if you are not using Dell media
+
+```PowerShell
+    #more info: https://www.dell.com/support/kbdoc/en-us/000224407
+    
+    #16G
+    $LatestSBE="https://dl.dell.com/FOLDER13460338M/1/Bundle_SBE_Dell_AX-16G-45n0c_4.2.2506.1600.zip"
+    #or 15G (not yet 24H2)
+    #$LatestSBE="https://dl.dell.com/FOLDER13607158M/1/Bundle_SBE_Dell_AX-15G_4.2.2506.1506.zip"
+
+    #region populate SBE package
+        #Set up web client to download files with authenticated web request in case there's a proxy
+        $WebClient = New-Object System.Net.WebClient
+        #$proxy = new-object System.Net.WebProxy
+        $proxy = [System.Net.WebRequest]::GetSystemWebProxy()
+        $proxy.Credentials = [System.Net.CredentialCache]::DefaultCredentials
+        #$proxy.Address = $proxyAdr
+        #$proxy.useDefaultCredentials = $true
+        $WebClient.proxy = $proxy
+        #headers with user-agent as some versions of SBE requires it for download
+        $webclient.Headers.Add("User-Agent", "WhateverUser-AgentString/1.0")
+
+        #Download SBE
+            $FileName=$($LatestSBE.Split("/")| Select-Object -Last 1)
+            $WebClient.DownloadFile($LatestSBE,"$env:userprofile\Downloads\$FileName")
+
+            #Transfer to servers
+            $Sessions=New-PSSession -ComputerName $Servers -Credential $Credentials
+            foreach ($Session in $Sessions){
+                Copy-Item -Path $env:userprofile\Downloads\$FileName -Destination c:\users\$UserName\Downloads\ -ToSession $Session
+            }
+
+        Invoke-Command -ComputerName $Servers -scriptblock {
+            #unzip to c:\SBE
+            New-Item -Path c:\ -Name SBE -ItemType Directory -ErrorAction Ignore
+            Expand-Archive -LiteralPath $env:userprofile\Downloads\$using:FileName -DestinationPath C:\SBE -Force
+        } -Credential $Credentials
+
+        #populate latest metadata file
+            #download
+            Invoke-WebRequest -Uri https://aka.ms/AzureStackSBEUpdate/DellEMC -OutFile $env:userprofile\Downloads\SBE_Discovery_Dell.xml
+            #copy to servers
+            foreach ($Session in $Session){
+                Copy-Item -Path $env:userprofile\Downloads\SBE_Discovery_Dell.xml -Destination C:\SBE -ToSession $Session
+            }
+
+        $Sessions | Remove-PSSession
+    #endregion
 ```
 
 ### Task 08 - Deploy Azure Local from Azure Portal
