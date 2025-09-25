@@ -436,7 +436,6 @@ Since we already have credentials and TrustedHosts configured in Powershell from
 #install modules (Not needed with latest media
 <#
 Invoke-Command -ComputerName $Servers -Scriptblock {
-    Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
     Install-Module PowerShellGet -AllowClobber -Force
     Install-Module -Name AzStackHci.EnvironmentChecker -Force
 } -Credential $Credentials
@@ -474,7 +473,6 @@ $LCMCredentials= New-Object System.Management.Automation.PSCredential ($LCMUserN
 
 #create objects for Azure Local in Active Directory
     #install posh module for prestaging Active Directory
-    Install-PackageProvider -Name NuGet -Force
     Install-Module AsHciADArtifactsPreCreationTool -Repository PSGallery -Force
 
     #make sure active directory module and GPMC is installed
@@ -502,7 +500,6 @@ $Location="eastus" #list of supported regions: https://learn.microsoft.com/en-us
 
 #login to azure
     #download Azure module
-    Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
     if (!(Get-InstalledModule -Name az.accounts -ErrorAction Ignore)){
         Install-Module -Name Az.Accounts -Force 
     }
