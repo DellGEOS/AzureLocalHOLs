@@ -316,6 +316,8 @@ $OUPath="OU=ALClus01,DC=Corp,DC=contoso,DC=com"
 
 #install required roles
 Install-WindowsFeature -Name "RSAT-Clustering-Powershell","RSAT-AD-PowerShell"
+
+#grab servers
 [object[]]$Servers=(Get-ClusterNode -Cluster $CLusterName).Name
 
 #create volume
@@ -331,25 +333,26 @@ Invoke-Command -ComputerName $OwnerNode.Name -ScriptBlock {
 #simulate failure
 #remove from CSV
 Get-ClusterSharedVolume -Name "Cluster Virtual Disk ($VolumeName)" -Cluster $CLusterName | Remove-ClusterSharedVolume
-#remve from CLuster Resources
+#remove from CLuster Resources
 Get-ClusterResource -Cluster $CLusterName -Name "Cluster Virtual Disk ($VolumeName)" | Remove-ClusterResource -Force
 
 #add volume back to cluster (will fail!)
 Get-ClusterAvailableDisk -Cluster $CLusterName | Add-ClusterDisk
 
-#validate
+#validate (it's really failed)
 Get-ClusterResource -Cluster $CLusterName -Name "Cluster Disk 1"
 
-#find recovery key
+#find recovery keys in AD
 $RecoveryInfo=Get-ADObject -Filter { (objectClass -eq "msFVE-recoveryInformation") } -SearchBase "$OUPath" -Properties msFVE-RecoveryPassword, whenCreated
 $RecoveryPasswordsAD=$RecoveryInfo.'msFVE-RecoveryPassword'
+
 #grab all existing volumes and it's recovery keys, so we can find missing key in AD
 $RecoveryPasswordsVolumes=Invoke-Command -ComputerName $Servers[0] -ScriptBlock {(Get-BitlockerVolume | Select-Object -ExpandProperty KeyProtector).RecoveryPassword}
 
+#find recovery key for your missing volume
 $RecoveryKey=(Compare-Object -ReferenceObject $RecoveryPasswordsAD -DifferenceObject $RecoveryPasswordsVolumes | Where-Object SideIndicator -eq "<=").InputObject
 
-
-#unlock volume
+#unlock bitlocker volume
 $RecoveryKeyCollection = [System.Collections.Specialized.StringCollection]::new()
 $RecoveryKeyCollection.Add($RecoveryKey)
 Start-ClusterPhysicalDiskResource -Name "Cluster Disk 1" -RecoveryPassword $RecoveryKeyCollection -Cluster $CLusterName
