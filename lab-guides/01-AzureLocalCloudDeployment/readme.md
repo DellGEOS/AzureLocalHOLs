@@ -127,6 +127,36 @@ Restart-Computer
 
 ![](./media/hvconnect01.png)
 
+### Define your lab variables
+
+```PowerShell
+#variables for Azure Local cluster nodes
+$Servers="ALNode1","ALNode2"
+$UserName="Administrator"
+$Password="LS1setup!"
+$SecuredPassword = ConvertTo-SecureString $password -AsPlainText -Force
+$Credentials= New-Object System.Management.Automation.PSCredential ($UserName,$SecuredPassword)
+
+#variables for AD Preparation 
+$AsHCIOUName="OU=ALClus01,DC=Corp,DC=contoso,DC=com"
+$LCMUserName="ALClus01-LCMUser"
+$LCMPassword="LS1setup!LS1setup!"
+
+#Create LCM credentials
+$SecuredPassword = ConvertTo-SecureString $LCMPassword -AsPlainText -Force
+$LCMCredentials= New-Object System.Management.Automation.PSCredential ($LCMUserName,$SecuredPassword)
+
+#variables for Arc Gateway and Azure ResourceGroup and Location
+$GatewayName="ALClus01-ArcGW"
+$ResourceGroupName="ALClus01-RG"
+$Location="eastus" #list of supported regions: https://learn.microsoft.com/en-us/azure/azure-local/concepts/system-requirements-23h2?view=azloc-2507&tabs=azure-public#azure-requirements
+
+#Variable for NTP time source for Azure Local nodes
+$NTPServer="DC.corp.contoso.com"  
+
+```
+
+
 ### Task01 - Validate connectivity to servers
 
 #### Step 1 Test name resolution works with simple ping
@@ -140,7 +170,6 @@ Notice, that host is replying. Latest image Azure Local already allows ICMP pack
 #### Step 2 Check WinRM connectivity
 
 ```PowerShell
-$Servers="ALNode1","ALNode2"
 foreach ($Server in $Servers){
     Test-NetConnection -ComputerName $Server -CommonTCPPort WINRM
 }
@@ -162,11 +191,6 @@ Get-NetFirewallRule -Name WINRM-HTTP-In-TCP-PUBLIC | Get-NetFirewallAddressFilte
 #### Step 3 Connect to servers using WinRM
 
 ```PowerShell
-$Servers="ALNode1","ALNode2"
-$UserName="Administrator"
-$Password="LS1setup!"
-$SecuredPassword = ConvertTo-SecureString $password -AsPlainText -Force
-$Credentials= New-Object System.Management.Automation.PSCredential ($UserName,$SecuredPassword)
 
 #configure trusted hosts to be able to communicate with servers
 $TrustedHosts=@()
@@ -465,13 +489,6 @@ Simply run the following PowerShell script to create objects
 > LCM = LifeCycle Management account. Account that will be used to domain join machines and create CAU account.
 
 ```PowerShell
-$AsHCIOUName="OU=ALClus01,DC=Corp,DC=contoso,DC=com"
-$LCMUserName="ALClus01-LCMUser"
-$LCMPassword="LS1setup!LS1setup!"
-#Create LCM credentials
-$SecuredPassword = ConvertTo-SecureString $LCMPassword -AsPlainText -Force
-$LCMCredentials= New-Object System.Management.Automation.PSCredential ($LCMUserName,$SecuredPassword)
-
 #create objects for Azure Local in Active Directory
     #install posh module for prestaging Active Directory
     Install-PackageProvider -Name NuGet -Force
@@ -496,10 +513,6 @@ $LCMCredentials= New-Object System.Management.Automation.PSCredential ($LCMUserN
 Following script will simply create Resource Group and Arc Gateway (optional).
 
 ```PowerShell
-$GatewayName="ALClus01-ArcGW"
-$ResourceGroupName="ALClus01-RG"
-$Location="eastus" #list of supported regions: https://learn.microsoft.com/en-us/azure/azure-local/concepts/system-requirements-23h2?view=azloc-2507&tabs=azure-public#azure-requirements
-
 #login to azure
     #download Azure module
     Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
@@ -599,6 +612,7 @@ Register-AzResourceProvider -ProviderNamespace "Microsoft.Insights"
     $id = (Get-AzContext).Account.Id
     $Cloud="AzureCloud"
 
+<# no longer needed
     #check if token is plaintext (older module version outputs plaintext, version 5 outputs secure string)
     # Check if the token is a SecureString
     if ($armtoken -is [System.Security.SecureString]) {
@@ -608,6 +622,7 @@ Register-AzResourceProvider -ProviderNamespace "Microsoft.Insights"
     }else {
         Write-Output "Token is already plaintext."
     }
+#>
 
 <# no longer needed
     #check if ImageCustomizationScheduledTask is not in disabled state (if it's "ready", run it) - will be fixed in 2506
@@ -698,8 +713,6 @@ In MSLab is DHCP enabled. This script will make sure there's just one GW and DHC
 This script simply tests if offset between management machine and any of the servers is greater than 2s. If so, it will configure NTP server. Just provide your NTP server (you can use domain controller)
 
 ```PowerShell
-$NTPServer="DC.corp.contoso.com"  
-
 #test if there is an time offset on servers
 Foreach ($Server in $Servers){
     $localtime=get-date
